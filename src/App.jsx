@@ -39,6 +39,8 @@ import { loadPets, upsertPet, deletePet, loadLang, saveLang } from "./lib/db";
 
    v2.7.1：所有方框、卡片、貼紙、紙膠帶全部擺正，不再有任何旋轉。
 
+   v2.8：表單有照片時多一顆「移除照片」，清掉照片與辨識結果，回到剪影狀態。
+
    資料存放：Supabase（見 src/lib/db.js、supabase/schema.sql）；語言偏好存 localStorage
 ------------------------------------------------------------------ */
 
@@ -475,7 +477,7 @@ const STR = {
     },
     form: {
       newLabel: "NEW", editLabel: "EDIT",
-      photo: "照片", takePhoto: "拍照", fromGallery: "從相簿選擇",
+      photo: "照片", takePhoto: "拍照", fromGallery: "從相簿選擇", removePhoto: "移除照片",
       photoHint: "在手機上「拍照」會直接開啟相機；在電腦上會開啟檔案選擇視窗。",
       name: "名字", namePh: "小白",
       species: "物種", dog: "犬", cat: "貓",
@@ -651,7 +653,7 @@ const STR = {
     },
     form: {
       newLabel: "NEW", editLabel: "EDIT",
-      photo: "Photo", takePhoto: "Take photo", fromGallery: "Choose from library",
+      photo: "Photo", takePhoto: "Take photo", fromGallery: "Choose from library", removePhoto: "Remove photo",
       photoHint: "On a phone, \"Take photo\" opens the camera. On a computer it opens the file picker.",
       name: "Name", namePh: "Mochi",
       species: "Species", dog: "Dog", cat: "Cat",
@@ -1667,6 +1669,7 @@ function PetForm({ pet, onSave, onCancel }) {
     const file = e.target.files?.[0]; e.target.value = ""; if (!file) return;
     try { set("photo", await readImage(file)); lastFileRef.current = file; setGuessMsg(""); } catch { setErr(F.errPhoto); }
   }
+  function removePhoto() { set("photo", ""); lastFileRef.current = null; setGuessMsg(""); }
   async function guessFromPhoto() {
     if (!f.photo || guessBusy) return;
     setGuessBusy(true); setGuessMsg("");
@@ -1709,6 +1712,7 @@ function PetForm({ pet, onSave, onCancel }) {
               <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8 }}>
                 <button className="pp-btn" onClick={() => camRef.current?.click()}>{F.takePhoto}</button>
                 <button className="pp-btn-ghost" onClick={() => fileRef.current?.click()}>{F.fromGallery}</button>
+                {f.photo && <button className="pp-btn-danger" onClick={removePhoto}>{F.removePhoto}</button>}
                 <input ref={camRef} type="file" accept="image/*" capture="environment" onChange={pickPhoto} style={{ display: "none" }} />
                 <input ref={fileRef} type="file" accept="image/*" onChange={pickPhoto} style={{ display: "none" }} />
               </div>
