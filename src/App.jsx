@@ -37,6 +37,8 @@ import { loadPets, upsertPet, deletePet, loadLang, saveLang } from "./lib/db";
 
    v2.7：新增「所在城市」欄位（下拉選單，存代碼，顯示時翻譯；資料庫加 city 欄）。
 
+   v2.7.1：所有方框、卡片、貼紙、紙膠帶全部擺正，不再有任何旋轉。
+
    資料存放：Supabase（見 src/lib/db.js、supabase/schema.sql）；語言偏好存 localStorage
 ------------------------------------------------------------------ */
 
@@ -69,12 +71,12 @@ const CSS = `
 /* ---- 紙膠帶 ---- */
 .tape{
   position:absolute;top:-9px;left:18px;width:72px;height:20px;
-  background-color:var(--tape-a);opacity:.92;transform:rotate(-5deg);
+  background-color:var(--tape-a);opacity:.92;
   background-image:repeating-linear-gradient(90deg,rgba(255,255,255,0) 0 5px,rgba(255,255,255,.38) 5px 7px);
   border-radius:1px;box-shadow:0 1px 2px rgba(59,48,36,.12);pointer-events:none;
 }
-.tape.b{background-color:var(--tape-b);transform:rotate(4deg);left:auto;right:22px;}
-.tape.c{background-color:var(--tape-c);transform:rotate(-3deg);}
+.tape.b{background-color:var(--tape-b);left:auto;right:22px;}
+.tape.c{background-color:var(--tape-c);}
 
 /* ---- 紙卡 ---- */
 .paper{
@@ -89,7 +91,7 @@ const CSS = `
   box-shadow:0 2px 6px rgba(59,48,36,.2);
   position:relative;border-radius:2px;
 }
-.pp-banner .tape{transform:rotate(0);left:50%;margin-left:-36px;top:-10px;}
+.pp-banner .tape{left:50%;margin-left:-36px;top:-10px;}
 .pp-title{font-family:var(--font-round);font-size:24px;margin:0;font-weight:700;letter-spacing:.02em;}
 .pp-sub{font-family:var(--font-type);font-size:10px;letter-spacing:.24em;color:var(--ink-soft);margin-top:4px;}
 .pp-count{margin-top:18px;font-family:var(--font-type);font-size:11px;letter-spacing:.12em;color:var(--ink-soft);}
@@ -113,7 +115,7 @@ const CSS = `
 /* ---- 便利貼提醒 ---- */
 .pp-alert{
   margin:16px 16px 0;background:#FCEFC3;padding:12px 14px;border-radius:2px;
-  box-shadow:0 2px 4px rgba(59,48,36,.16);transform:rotate(-.6deg);
+  box-shadow:0 2px 4px rgba(59,48,36,.16);
   font-size:13px;color:var(--ink);line-height:1.65;
 }
 .pp-alert b{font-weight:700;}
@@ -127,8 +129,6 @@ const CSS = `
   background:var(--card);border:none;border-radius:3px;
   box-shadow:0 2px 6px rgba(59,48,36,.16);margin:0 0 20px;
 }
-.pp-card:nth-child(odd){transform:rotate(-.5deg);}
-.pp-card:nth-child(even){transform:rotate(.45deg);}
 .pp-card-in{display:flex;gap:16px;padding:18px 16px 12px;}
 
 /* ---- 相片 + 相角 ---- */
@@ -180,7 +180,7 @@ img.pp-photo{display:block;}
   background:#fff;color:var(--ink);border:none;
   font-size:28px;line-height:1;font-family:var(--font-round);
   box-shadow:0 3px 10px rgba(59,48,36,.3);
-  display:flex;align-items:center;justify-content:center;transform:rotate(-6deg);
+  display:flex;align-items:center;justify-content:center;
 }
 
 /* ---- 導覽 ---- */
@@ -232,7 +232,7 @@ img.pp-photo{display:block;}
   box-shadow:0 1px 3px rgba(59,48,36,.2);border:2px solid var(--tape-c);
   display:flex;align-items:center;justify-content:center;
   font-family:var(--font-round);font-weight:700;font-size:14px;color:var(--ink);
-  transform:rotate(-7deg);flex:0 0 auto;
+  flex:0 0 auto;
 }
 .pp-tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}
 .pp-tag{
@@ -311,7 +311,7 @@ img.pp-photo{display:block;}
 .pp-src{font-family:var(--font-type);font-size:10.5px;letter-spacing:.06em;color:var(--ink-soft);margin-top:10px;line-height:1.7;}
 .pp-verdict{
   display:inline-block;padding:8px 16px;border-radius:999px;background:var(--ok);color:#fff;
-  font-family:var(--font-round);font-weight:700;font-size:15px;transform:rotate(-1.5deg);
+  font-family:var(--font-round);font-weight:700;font-size:15px;
   box-shadow:0 2px 4px rgba(59,48,36,.2);margin:6px 16px 4px;
 }
 .pp-verdict.bad{background:var(--berry);}
@@ -1870,7 +1870,7 @@ function Paw({ size = 24, color = "#3B3024" }) {
 
 function PawSticker() {
   return (
-    <div className="pp-paw" style={{ width: 46, height: 46, borderRadius: "50%", background: "#fff", boxShadow: "0 2px 5px rgba(59,48,36,.22)", display: "flex", alignItems: "center", justifyContent: "center", transform: "rotate(10deg)" }}>
+    <div className="pp-paw" style={{ width: 46, height: 46, borderRadius: "50%", background: "#fff", boxShadow: "0 2px 5px rgba(59,48,36,.22)", display: "flex", alignItems: "center", justifyContent: "center" }}>
       <Paw size={28} />
     </div>
   );
