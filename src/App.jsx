@@ -41,6 +41,9 @@ import { loadPets, upsertPet, deletePet, loadLang, saveLang } from "./lib/db";
 
    v2.8：表單有照片時多一顆「移除照片」，清掉照片與辨識結果，回到剪影狀態。
 
+   v2.9：推薦商品只顯示最合適的 1 款；「玩伴建議」改為「養育建議」（運動／美容／健康／環境／社交），
+      依物種、月齡、體型、品種類型、結紮、過敏原自動產生。
+
    資料存放：Supabase（見 src/lib/db.js、supabase/schema.sql）；語言偏好存 localStorage
 ------------------------------------------------------------------ */
 
@@ -374,7 +377,7 @@ const STR = {
     noAllergy: "無",
     annex1: "營養方向",
     annex2: "推薦商品",
-    annex3: "玩伴建議",
+    annex3: "養育建議",
     checkBtn: "檢查一款商品適不適合牠",
     noProducts: "目前的目錄裡沒有能避開所有過敏原、又符合年齡階段的商品。建議直接諮詢獸醫，或考慮處方飼料。",
     ingredientsLabel: "主要成分：",
@@ -408,21 +411,54 @@ const STR = {
       large: (w) => `${w} 公斤屬於大型犬，這款控制了鈣磷比例，減輕骨骼負擔。`,
     },
     tags: { weight: "體重管理", highProtein: "高蛋白", single: "單一蛋白", joint: "關節保健", small: "小型犬", large: "大型犬", grainFree: "無穀" },
-    playmate: {
-      k: { age: "年齡", size: "體型", status: "狀態", nature: "天性" },
-      dogUnder4m: "未滿 4 個月，疫苗還沒打完，不建議去狗公園或接觸陌生犬。但社會化黃金期是 3–14 週，可以在家中或熟人家裡，與已完整接種、性格穩定的成犬短暫互動。",
-      dogPuppy: "4 個月到 1 歲是精力最旺盛的階段，適合和同齡幼犬或有耐心的溫和成犬玩。每次 15–20 分鐘，累了就停。",
-      dogAdult: "成犬適合和活動量、體型相近的犬隻玩。初次見面先繫繩，在中立場所（不是任一方的家）進行。",
-      dogSenior: "熟齡犬適合和性格穩定的成犬或同齡犬做短時間、低強度的互動，例如一起散步。避開精力旺盛的幼犬，撲跳容易造成關節負擔。",
-      dogSmall: "10 公斤以下屬小型犬。建議和體型相近的犬隻玩，避免和大型犬玩追逐遊戲——體型差距太大時，追逐可能觸發大型犬的捕獵本能。多數狗公園因此設有小型犬區。",
-      dogMedium: "10–25 公斤屬中型犬，和大多數體型的犬隻都能相處。和小型犬互動時，留意動作不要太粗魯。",
-      dogLarge: "25 公斤以上屬大型犬。和同體型或中型犬玩最合適；和小型犬互動時避免追逐與撲壓，改用並排散步。",
-      dogIntactMale: "未結紮公犬與其他未結紮公犬之間，衝突機率較高。初次見面請繫繩，並觀察僵硬、低吼等訊號。",
-      catGeneral: "貓是領域性動物，多數動物行為機構不建議帶貓參加聚會或與陌生貓互動——這對貓來說是壓力而非樂趣。牠最好的玩伴是你（每天兩次、每次 10–15 分鐘的逗貓棒），以及同住的貓。",
-      catKitten: "1 歲以下的幼貓接受新貓的能力最強。如果考慮第二隻貓，這是最好的時機，但仍需分房隔離、循序漸進介紹，通常需要一到數週。",
-      catAdult: "成貓要引入新貓，需要更長的分房介紹期（數週到數月），且性格是否相配比年齡更重要。",
-      catSenior: "熟齡貓通常偏好安靜穩定的環境，引入活潑幼貓容易造成長期壓力。若有需要，選擇性格溫和的成貓，並確保牠有可以躲避的專屬空間。",
-      sources: "參考：AVSAB《幼犬社會化立場聲明》、ASPCA 狗公園安全建議、International Cat Care 多貓家庭指引。以上為一般性建議，實際互動請以現場觀察為準。",
+    care: {
+      k: { exercise: "運動", grooming: "美容", health: "健康", home: "環境", social: "社交" },
+      dog: {
+        exPuppy: "幼犬骨骼還在發育，運動採「短而多次」：一個簡單的原則是每滿一個月齡，每次散步 5 分鐘、一天兩次。避免跳上跳下和長距離跑步。",
+        exSmall: "小型成犬每天 30 分鐘左右的散步加室內遊戲就夠，重點是每天都有。",
+        exMedium: "中型成犬每天 45–60 分鐘的活動，散步之外加一點嗅聞或撿球；消耗腦力比消耗體力更能讓牠安定。",
+        exLarge: "大型成犬每天至少 60 分鐘，分成兩次。天氣熱時改在清晨或傍晚，並留意柏油路面的溫度。",
+        exSenior: "熟齡犬保持每天短程、平緩的散步，量比年輕時少但不要停。上下樓梯和跳沙發盡量避免，家裡可以鋪防滑墊。",
+        grPoodle: "捲毛不會自然脫落，需要每天梳、每 4–6 週修剪一次，否則容易打結成氈。",
+        grSpitz: "雙層毛每週梳 2–3 次，換毛季會大量掉毛，這時改成每天梳。不要剃毛：底毛剃掉後不容易長回來，也失去隔熱功能。",
+        grRetriever: "每週梳 1–2 次，換毛季增加。耳朵下垂的品種每週檢查耳道並保持乾燥。",
+        grShepherd: "每週梳 2 次，掉毛量大。運動量大的品種也要留意腳墊磨損。",
+        grFrenchie: "臉部皺褶每天用濕布擦乾淨再擦乾，避免皮膚炎。短鼻品種散熱差，夏天避免正午外出，留意呼吸聲。",
+        grLong: "長身短腿的體型脊椎負擔大：避免跳上跳下、控制體重，沙發和床邊可以放斜坡。",
+        grSchnauzer: "鬍子每次進食後容易沾髒，養成擦拭習慣。每 6–8 週修剪一次。",
+        grToy: "小型長毛犬每天梳，眼睛周圍的分泌物每天擦。體型小，冬天注意保暖，夏天避免長時間曝曬。",
+        grMix: "依實際毛質決定：短毛每週梳一次，長毛每天梳。每週順便檢查耳朵、指甲和牙齒。",
+        hpPuppy: "幼犬疫苗通常從 6–8 週開始，每 3–4 週一劑到 16 週；驅蟲依獸醫排程。這段期間避免去狗公園。",
+        hpAdult: "每年一次健康檢查與疫苗追加。牙結石是成犬最常見的問題之一，每天刷牙或至少每週幾次。",
+        hpSenior: "7 歲後建議每半年檢查一次，加驗血液與腎功能。體重、飲水量或走路姿勢有變化就提早就醫。",
+        hpNeutered: "結紮後代謝下降，容易發胖。每個月量一次體重，維持「摸得到肋骨但看不見」的體態。",
+        hpAllergy: (list) => `已知對 ${list} 過敏：買任何零食或飼料前先看成分表，餐桌食物一律不給。皮膚搔癢、耳朵發炎、軟便常是過敏的表現。`,
+        home: "給牠一個固定的安靜角落（籠子或墊子），那是牠的安全區。每天 10 分鐘的嗅聞遊戲或簡單訓練，能減少無聊造成的破壞行為。",
+        soPuppy: "3–14 週是社會化黃金期，多接觸不同的人、聲音、地面，以及已完整接種、性格穩定的成犬，每次短暫、正向。",
+        soAdult: "初次見面的狗先繫繩、選中立場所，看到僵硬、低吼等訊號就分開。",
+        soIntactMale: "未結紮公犬與其他未結紮公犬之間衝突機率較高，初次見面請特別留意。",
+      },
+      cat: {
+        exKitten: "幼貓精力旺盛，每天多次短時間的逗貓棒遊戲（每次 10 分鐘），把撲咬的對象導向玩具而不是手。",
+        exAdult: "成貓每天兩次、每次 10–15 分鐘的逗貓棒遊戲，模仿狩獵：追、撲、抓到、結束。遊戲後餵食，符合牠的天性。",
+        exSenior: "熟齡貓仍需要遊戲，但改成慢一點、以地面為主。跳台高度降低，或加一層中間平台。",
+        grFluffy: "長毛每天梳，重點在腋下、腹部和後腿內側，這些地方最容易打結。定期梳毛也能減少毛球。",
+        grShorthair: "短毛每週梳一次即可，換毛季增加。梳毛時順便檢查皮膚有沒有結痂或掉毛區塊。",
+        grSphynx: "無毛貓皮膚會出油，每週用溫水擦拭或洗澡一次；怕冷也怕曬，室溫要穩定，避免直曬。",
+        grFold: "摺耳貓的耳朵每週檢查並清潔。這個品種有先天軟骨問題，走路僵硬、不願跳躍要及早就醫。",
+        grMunchkin: "短腿貓避免從高處跳下，跳台用多層低階梯。控制體重，減少脊椎和關節負擔。",
+        hpKitten: "幼貓疫苗通常從 8 週開始，每 3–4 週一劑到 16 週。這段期間留在室內，並依獸醫排程驅蟲。",
+        hpAdult: "每年一次健檢與疫苗。貓不愛喝水，濕食或在食物裡加水能顯著降低泌尿道問題。",
+        hpSenior: "7 歲後建議每半年檢查，特別是腎功能和甲狀腺。喝水量變多、體重變輕是常見的早期警訊。",
+        hpNeutered: "結紮貓的熱量需求下降約 20–30%，最容易在結紮後一年內發胖。用量杯餵、每月量體重。",
+        hpAllergy: (list) => `已知對 ${list} 過敏：零食和主食都要看成分表。貓的食物過敏常表現在皮膚（脖子、臉部搔癢）和腸胃。`,
+        home: "貓砂盆數量是貓數加一，放在安靜但不偏僻的地方。給牠垂直空間（跳台、窗邊平台）和至少一個能完全躲起來的地方。磨爪板放在牠常經過的路線上。",
+        soGeneral: "貓是領域性動物，不需要「交朋友」，牠最好的玩伴是你。",
+        soKitten: "如果考慮第二隻貓，1 歲前是接受度最高的時期，但仍要分房隔離、循序漸進介紹。",
+        soAdult: "成貓引入新貓需要數週到數月的分房介紹期，性格相配比年齡更重要。",
+        soSenior: "熟齡貓通常偏好安靜穩定的環境，引入活潑幼貓容易造成長期壓力。",
+      },
+      sources: "參考：AAHA 犬貓生命階段照護指引、WSAVA 疫苗指引、AVSAB 幼犬社會化立場聲明、International Cat Care 環境需求指引。以上為依基本資料自動產生的一般性建議，實際狀況請以獸醫診斷為準。",
     },
     check: {
       nav: "CHECK",
@@ -550,7 +586,7 @@ const STR = {
     noAllergy: "None",
     annex1: "Nutrition profile",
     annex2: "Recommended products",
-    annex3: "Playmate guide",
+    annex3: "Care guide",
     checkBtn: "Check if a product suits them",
     noProducts: "Nothing in the current catalogue avoids all listed allergens and fits this life stage. Talk to your vet or consider a prescription diet.",
     ingredientsLabel: "Main ingredients: ",
@@ -584,21 +620,54 @@ const STR = {
       large: (w) => `At ${w} kg this is a large breed; this formula controls calcium and phosphorus to ease bone load.`,
     },
     tags: { weight: "Weight control", highProtein: "High protein", single: "Single protein", joint: "Joint care", small: "Small breed", large: "Large breed", grainFree: "Grain-free" },
-    playmate: {
-      k: { age: "Age", size: "Size", status: "Status", nature: "Nature" },
-      dogUnder4m: "Under 4 months and not fully vaccinated, so dog parks and unfamiliar dogs are not recommended. The socialisation window is 3–14 weeks though, so short, supervised time with a fully vaccinated, steady adult dog at home or a friend's place is valuable.",
-      dogPuppy: "4 months to 1 year is peak energy. Good matches are puppies of a similar age or patient, gentle adult dogs. Keep sessions to 15–20 minutes and stop when tired.",
-      dogAdult: "Adult dogs do best with playmates of similar energy and size. For a first meeting, keep both on lead and use neutral ground rather than either dog's home.",
-      dogSenior: "Senior dogs suit short, low-intensity time with calm adults or other seniors, such as a shared walk. Avoid bouncy puppies; the jumping is hard on joints.",
-      dogSmall: "Under 10 kg counts as a small breed. Play with similar-sized dogs and avoid chase games with large dogs; a big size gap can trigger a large dog's prey drive. This is why most dog parks have a small-dog area.",
-      dogMedium: "10–25 kg is a medium breed and gets on with most sizes. With smaller dogs, keep an eye on rough play.",
-      dogLarge: "Over 25 kg is a large breed. Same-size or medium dogs are the best match; with small dogs, skip chasing and pouncing in favour of a side-by-side walk.",
-      dogIntactMale: "Intact males have a higher chance of conflict with other intact males. Keep the first meeting on lead and watch for stiffening or low growls.",
-      catGeneral: "Cats are territorial, and most animal-behaviour organisations advise against cat meet-ups or contact with unfamiliar cats; it's stress, not fun, for them. Their best playmates are you (two 10–15 minute wand-toy sessions a day) and any cat they already live with.",
-      catKitten: "Kittens under 1 year are the most accepting of a new cat. If a second cat is on your mind, this is the best time, but it still needs a separate room and a gradual introduction over one to several weeks.",
-      catAdult: "Introducing a new cat to an adult needs a longer separate-room period (weeks to months), and personality fit matters more than age.",
-      catSenior: "Senior cats usually prefer a quiet, stable home; a lively kitten can cause long-term stress. If needed, choose a gentle adult cat and make sure the senior has a private space to retreat to.",
-      sources: "Based on: AVSAB Position Statement on Puppy Socialization, ASPCA dog park guidance, International Cat Care multi-cat household guidance. General advice only; always go by what you observe in the moment.",
+    care: {
+      k: { exercise: "Exercise", grooming: "Grooming", health: "Health", home: "Home", social: "Social" },
+      dog: {
+        exPuppy: "Puppy bones are still developing, so keep exercise short and frequent: a simple rule is 5 minutes of walking per month of age, twice a day. Avoid jumping on and off furniture and long runs.",
+        exSmall: "A small adult dog needs about 30 minutes of walking plus indoor play a day. What matters most is that it happens every day.",
+        exMedium: "A medium adult dog needs 45–60 minutes of activity a day. Add sniffing games or fetch to the walk; tiring the brain settles a dog better than tiring the body.",
+        exLarge: "A large adult dog needs at least 60 minutes a day, split in two. In hot weather move walks to early morning or evening and check how hot the pavement is.",
+        exSenior: "Senior dogs should keep a short, gentle daily walk; less than before, but never none. Avoid stairs and jumping onto sofas, and put non-slip mats on smooth floors.",
+        grPoodle: "Curly coats don't shed naturally, so brush daily and clip every 4–6 weeks or the coat mats into felt.",
+        grSpitz: "Double coats need brushing 2–3 times a week, daily during shedding season. Don't shave: the undercoat may not grow back properly and it's their insulation.",
+        grRetriever: "Brush 1–2 times a week, more in shedding season. Floppy-eared breeds need a weekly ear check; keep the ears dry.",
+        grShepherd: "Brush twice a week; shedding is heavy. Active breeds also need their paw pads checked for wear.",
+        grFrenchie: "Wipe the facial folds clean and dry every day to prevent skin infections. Flat-faced breeds overheat easily: no midday walks in summer, and listen for laboured breathing.",
+        grLong: "A long back on short legs strains the spine: no jumping on or off furniture, keep weight down, and add ramps by the sofa and bed.",
+        grSchnauzer: "The beard gets dirty at every meal, so make wiping it a habit. Clip every 6–8 weeks.",
+        grToy: "Small long-coated dogs need daily brushing and daily wiping around the eyes. Being small, keep them warm in winter and out of long sun exposure in summer.",
+        grMix: "Go by the actual coat: brush weekly for short coats, daily for long ones. Use the session to check ears, nails and teeth.",
+        hpPuppy: "Puppy vaccines usually start at 6–8 weeks, with a dose every 3–4 weeks until 16 weeks; deworm on your vet's schedule. Stay away from dog parks until the course is complete.",
+        hpAdult: "One check-up and booster a year. Tartar is one of the most common adult problems, so brush teeth daily or at least a few times a week.",
+        hpSenior: "From age 7, a check-up every six months with blood and kidney tests is recommended. Any change in weight, water intake or gait is a reason to go early.",
+        hpNeutered: "Metabolism drops after neutering, so weight creeps up. Weigh monthly and aim for ribs you can feel but not see.",
+        hpAllergy: (list) => `Known allergy to ${list}: read the ingredients on every treat and food before buying, and no table scraps. Itchy skin, ear infections and soft stools are often how allergies show.`,
+        home: "Give them a fixed quiet spot (a crate or bed) as a safe zone. Ten minutes a day of sniffing games or simple training cuts boredom-driven destruction.",
+        soPuppy: "3–14 weeks is the socialisation window: lots of short, positive exposure to different people, sounds, surfaces and calm, fully vaccinated adult dogs.",
+        soAdult: "First meetings on lead, on neutral ground. Separate at the first sign of stiffening or low growls.",
+        soIntactMale: "Intact males have a higher chance of conflict with other intact males, so take extra care at first meetings.",
+      },
+      cat: {
+        exKitten: "Kittens have endless energy: several short wand-toy sessions a day (10 minutes each), and redirect pouncing and biting onto toys rather than hands.",
+        exAdult: "Adult cats need two 10–15 minute wand-toy sessions a day that mimic a hunt: chase, pounce, catch, finish. Feed afterwards; it fits their instincts.",
+        exSenior: "Senior cats still need play, but slower and mostly on the ground. Lower the cat tree or add an intermediate step.",
+        grFluffy: "Long coats need daily brushing, especially under the arms, on the belly and inside the back legs where mats form first. Regular brushing also means fewer hairballs.",
+        grShorthair: "Short coats only need a weekly brush, more in shedding season. Use it to check the skin for scabs or bald patches.",
+        grSphynx: "Hairless skin gets oily: wipe with warm water or bathe weekly. They feel both cold and sun, so keep room temperature steady and avoid direct sunlight.",
+        grFold: "Check and clean the ears weekly. The breed carries an inherited cartilage condition; stiff walking or reluctance to jump needs an early vet visit.",
+        grMunchkin: "Short legs shouldn't jump down from heights; use multi-level, low steps. Keep weight down to protect the spine and joints.",
+        hpKitten: "Kitten vaccines usually start at 8 weeks, a dose every 3–4 weeks until 16 weeks. Keep them indoors meanwhile and deworm on your vet's schedule.",
+        hpAdult: "One check-up and booster a year. Cats drink little, so wet food or added water noticeably reduces urinary problems.",
+        hpSenior: "From age 7, a check-up every six months, especially kidney and thyroid. Drinking more and losing weight are common early warnings.",
+        hpNeutered: "Neutered cats need about 20–30% fewer calories and gain weight fastest in the first year after. Measure food with a cup and weigh monthly.",
+        hpAllergy: (list) => `Known allergy to ${list}: read the ingredients on treats and main food. Food allergies in cats usually show on the skin (itchy neck and face) and in the gut.`,
+        home: "Litter boxes: one more than the number of cats, in a quiet but not remote spot. Provide vertical space (cat tree, window perch) and at least one place to hide completely. Put scratching posts on their usual routes.",
+        soGeneral: "Cats are territorial and don't need to make friends; their best playmate is you.",
+        soKitten: "If a second cat is on your mind, before age 1 is when acceptance is highest, but it still needs a separate room and a gradual introduction.",
+        soAdult: "Introducing a new cat to an adult takes weeks to months of separate-room introduction, and personality fit matters more than age.",
+        soSenior: "Senior cats usually prefer a quiet, stable home; a lively kitten can cause long-term stress.",
+      },
+      sources: "Based on: AAHA canine and feline life stage guidelines, WSAVA vaccination guidelines, AVSAB Position Statement on Puppy Socialization, International Cat Care environmental needs guidelines. General advice generated from the profile; always go by your vet's assessment.",
     },
     check: {
       nav: "CHECK",
@@ -953,32 +1022,47 @@ function recommendProducts(pet, L, lang) {
     results.push({ p, score, why, warn });
   }
   results.sort((a, b) => b.score - a.score);
-  return results.slice(0, 3);
+  return results.slice(0, 1);
 }
 
-/* 玩伴建議：依物種、月齡、體型、結紮、活動量 */
-function playmateAdvice(pet, L) {
-  const P = L.playmate;
+/* 養育建議：依物種、月齡、體型、品種體型類型、結紮、過敏原 */
+function careAdvice(pet, L, lang) {
+  const C = L.care;
+  const K = C.k;
   const a = ageParts(pet.birthday);
   const months = a ? a.y * 12 + a.m : 36;
   const w = Number(pet.weightKg) || 0;
+  const sil = silhouetteFor(pet.species, pet.breed);
   const out = [];
+  const stage = months < 12 ? "young" : months <= 84 ? "adult" : "senior";
+  const allergyText = pet.allergies?.length ? allergenList(pet.allergies, lang, L) : "";
   if (pet.species === "dog") {
-    if (months < 4) out.push({ k: P.k.age, v: P.dogUnder4m });
-    else if (months < 12) out.push({ k: P.k.age, v: P.dogPuppy });
-    else if (months <= 84) out.push({ k: P.k.age, v: P.dogAdult });
-    else out.push({ k: P.k.age, v: P.dogSenior });
-    if (w > 0) {
-      if (w < 10) out.push({ k: P.k.size, v: P.dogSmall });
-      else if (w <= 25) out.push({ k: P.k.size, v: P.dogMedium });
-      else out.push({ k: P.k.size, v: P.dogLarge });
-    }
-    if (!pet.neutered && pet.gender === "male" && months >= 6) out.push({ k: P.k.status, v: P.dogIntactMale });
+    const D = C.dog;
+    if (stage === "young") out.push({ k: K.exercise, v: D.exPuppy });
+    else if (stage === "senior") out.push({ k: K.exercise, v: D.exSenior });
+    else out.push({ k: K.exercise, v: w > 0 && w < 10 ? D.exSmall : w > 25 ? D.exLarge : D.exMedium });
+    const G = { poodle: D.grPoodle, spitz: D.grSpitz, retriever: D.grRetriever, shepherd: D.grShepherd, frenchie: D.grFrenchie,
+      dachshund: D.grLong, corgi: D.grLong, schnauzer: D.grSchnauzer, toy: D.grToy };
+    out.push({ k: K.grooming, v: G[sil] || D.grMix });
+    const hp = [stage === "young" ? D.hpPuppy : stage === "senior" ? D.hpSenior : D.hpAdult];
+    if (pet.neutered) hp.push(D.hpNeutered);
+    if (allergyText) hp.push(D.hpAllergy(allergyText));
+    out.push({ k: K.health, v: hp.join(" ") });
+    out.push({ k: K.home, v: D.home });
+    const so = [stage === "young" ? D.soPuppy : D.soAdult];
+    if (!pet.neutered && pet.gender === "male" && months >= 6) so.push(D.soIntactMale);
+    out.push({ k: K.social, v: so.join(" ") });
   } else {
-    out.push({ k: P.k.nature, v: P.catGeneral });
-    if (months < 12) out.push({ k: P.k.age, v: P.catKitten });
-    else if (months <= 84) out.push({ k: P.k.age, v: P.catAdult });
-    else out.push({ k: P.k.age, v: P.catSenior });
+    const T = C.cat;
+    out.push({ k: K.exercise, v: stage === "young" ? T.exKitten : stage === "senior" ? T.exSenior : T.exAdult });
+    const G = { fluffy: T.grFluffy, sphynx: T.grSphynx, fold: T.grFold, munchkin: T.grMunchkin };
+    out.push({ k: K.grooming, v: G[sil] || T.grShorthair });
+    const hp = [stage === "young" ? T.hpKitten : stage === "senior" ? T.hpSenior : T.hpAdult];
+    if (pet.neutered) hp.push(T.hpNeutered);
+    if (allergyText) hp.push(T.hpAllergy(allergyText));
+    out.push({ k: K.health, v: hp.join(" ") });
+    out.push({ k: K.home, v: T.home });
+    out.push({ k: K.social, v: [T.soGeneral, stage === "young" ? T.soKitten : stage === "senior" ? T.soSenior : T.soAdult].join(" ") });
   }
   return out;
 }
@@ -1370,7 +1454,7 @@ function Detail({ pet, onBack, onEdit, onCheck, onDelete }) {
   const [confirm, setConfirm] = useState(false);
   const advice = foodAdvice(pet, L, lang);
   const picks = recommendProducts(pet, L, lang);
-  const mates = playmateAdvice(pet, L);
+  const care = careAdvice(pet, L, lang);
 
   return (
     <>
@@ -1417,14 +1501,13 @@ function Detail({ pet, onBack, onEdit, onCheck, onDelete }) {
       <div className="paper pp-annex">
         <span className="tape c" />
         <div className="pp-annex-h"><span className="pp-h">{L.annex2}</span><em>NOTE II</em></div>
-        {picks.length === 0 ? <div className="pp-none">{L.noProducts}</div> : picks.map((r, i) => (
+        {picks.length === 0 ? <div className="pp-none">{L.noProducts}</div> : picks.map((r) => (
           <div className="pp-prod" key={r.p.id}>
             <div className="pp-prod-top">
               <div style={{ minWidth: 0 }}>
                 <div className="pp-prod-brand">{BRANDS[r.p.brand][li(lang)]} · {r.p.size}</div>
                 <h3 className="pp-prod-name">{r.p.name[li(lang)]}</h3>
               </div>
-              <div className="pp-rank">{i + 1}</div>
             </div>
             {r.p.tags.length > 0 && <div className="pp-tags">{r.p.tags.map((t) => <span className="pp-tag" key={t}>{L.tags[t]}</span>)}</div>}
             <div className="pp-prod-ing">{L.ingredientsLabel}{r.p.ingredients.map((k) => ingName(k, lang)).join(L.join)}</div>
@@ -1439,8 +1522,8 @@ function Detail({ pet, onBack, onEdit, onCheck, onDelete }) {
       <div className="paper pp-annex">
         <span className="tape" />
         <div className="pp-annex-h"><span className="pp-h">{L.annex3}</span><em>NOTE III</em></div>
-        {mates.map((m, i) => <div className="pp-advice" key={i}><div className="k">{m.k}</div><div className="v">{m.v}</div></div>)}
-        <div className="pp-note">{L.playmate.sources}</div>
+        {care.map((m, i) => <div className="pp-advice" key={i}><div className="k">{m.k}</div><div className="v">{m.v}</div></div>)}
+        <div className="pp-note">{L.care.sources}</div>
       </div>
 
       <div style={{ padding: "0 16px 40px" }}>
