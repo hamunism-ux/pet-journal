@@ -26,6 +26,9 @@ import { loadPets, upsertPet, deletePet, loadLang, saveLang } from "./lib/db";
       和 artifact 版的差別只有四處：import、visionRequest、loadZXing、主元件 PetJournal 與 Login。
       其他畫面與邏輯完全相同。
 
+   v2.4：移除晶片號碼與疫苗到期提醒（欄位、首頁便利貼、詳細頁貼紙）。
+      多筆健康紀錄（含疫苗）之後以獨立功能加回。
+
    資料存放：Supabase（見 src/lib/db.js、supabase/schema.sql）；語言偏好存 localStorage
 ------------------------------------------------------------------ */
 
@@ -192,25 +195,6 @@ img.pp-photo{display:block;}
 .pp-row dt{color:var(--ink-soft);flex:0 0 auto;}
 .pp-row dd{margin:0;text-align:right;}
 
-/* ---- 疫苗貼紙 ---- */
-.pp-stamp{
-  position:absolute;right:14px;top:16px;width:80px;height:80px;border-radius:50%;
-  background:#fff;box-shadow:0 2px 5px rgba(59,48,36,.24);
-  display:flex;align-items:center;justify-content:center;transform:rotate(9deg);pointer-events:none;
-}
-.pp-stamp .in{
-  width:66px;height:66px;border-radius:50%;background:var(--berry);color:#fff;
-  display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;
-  font-family:var(--font-round);
-}
-.pp-stamp.ok .in{background:var(--ok);}
-.pp-stamp .s1{font-size:11px;font-weight:700;line-height:1.15;padding:0 6px;}
-.pp-stamp .s2{font-family:var(--font-type);font-size:7.5px;letter-spacing:.08em;margin-top:3px;opacity:.9;}
-@media (prefers-reduced-motion:no-preference){
-  .pp-stamp{animation:stickOn .3s cubic-bezier(.2,1.4,.4,1) both;}
-}
-@keyframes stickOn{from{transform:rotate(9deg) scale(1.6);opacity:0;}to{transform:rotate(9deg) scale(1);opacity:1;}}
-
 /* ---- 段落卡 ---- */
 .pp-annex{margin:0 16px 20px;padding-bottom:6px;}
 .pp-annex-h{padding:16px 16px 6px;display:flex;align-items:baseline;justify-content:space-between;gap:10px;}
@@ -337,9 +321,6 @@ const STR = {
     issued: (n) => `${n} 位家庭成員`,
     notIssued: "還沒有家庭成員",
     storageWarn: "資料暫時無法儲存，這次的修改在重新整理後可能會消失。",
-    dueExpired: (d) => ` 的疫苗已過期 ${d} 天`,
-    dueToday: " 的疫苗今天到期",
-    dueIn: (d) => ` 的疫苗將在 ${d} 天後到期`,
     empty1: "這本手帳還是空的。",
     empty2: "先把牠貼上來吧。",
     createFirst: "新增第一位成員",
@@ -355,7 +336,7 @@ const STR = {
     speciesName: { dog: "犬", cat: "貓" },
     rows: {
       species: "物種", gender: "性別", birthday: "生日", weight: "體重", neutered: "結紮",
-      allergies: "過敏原", chip: "晶片號碼", nextVaccine: "下次疫苗", note: "備註",
+      allergies: "過敏原", note: "備註",
     },
     gender: { male: "公", female: "母" },
     neuteredYes: "已結紮",
@@ -374,11 +355,6 @@ const STR = {
     deleteConfirm: (n) => `刪除後無法復原。確定要移除 ${n} 嗎？`,
     deleteYes: "確定移除",
     cancel: "取消",
-    stamp: {
-      expired: ["疫苗過期", (d) => `${d} DAYS AGO`],
-      soon: ["快到期了", (d) => `IN ${d} DAYS`],
-      ok: ["疫苗有效", (d) => `${d} DAYS LEFT`],
-    },
     age: (y, m) => (y === 0 ? `${m} 個月` : m === 0 ? `${y} 歲` : `${y} 歲 ${m} 個月`),
     stage: { young: { dog: "幼犬", cat: "幼貓" }, adult: { dog: "成犬", cat: "成貓" }, senior: { dog: "熟齡犬", cat: "熟齡貓" } },
     advice: {
@@ -479,8 +455,6 @@ const STR = {
       neutered: "結紮狀態", yes: "已結紮", no: "未結紮",
       allergies: "已知過敏原",
       allergiesHint: "點選所有已知的過敏原，沒有就不用選。",
-      nextVaccine: "下次疫苗到期日", nextVaccineHint: "填了之後，快到期時首頁會提醒你。",
-      chip: "晶片號碼",
       note: "備註", notePh: "怕打雷、不能吃太快",
       errName: "請填寫名字。",
       errBirthday: "請填寫生日，年齡與飼料建議需要用到。",
@@ -519,9 +493,6 @@ const STR = {
     issued: (n) => `${n} family member${n === 1 ? "" : "s"}`,
     notIssued: "No family members yet",
     storageWarn: "Data can't be saved right now. Changes may be lost after a refresh.",
-    dueExpired: (d) => `'s vaccine expired ${d} day${d === 1 ? "" : "s"} ago`,
-    dueToday: "'s vaccine is due today",
-    dueIn: (d) => `'s vaccine is due in ${d} day${d === 1 ? "" : "s"}`,
     empty1: "This journal is still empty.",
     empty2: "Add your first family member.",
     createFirst: "Add first member",
@@ -537,7 +508,7 @@ const STR = {
     speciesName: { dog: "Dog", cat: "Cat" },
     rows: {
       species: "Species", gender: "Sex", birthday: "Date of birth", weight: "Weight", neutered: "Neutered",
-      allergies: "Allergies", chip: "Microchip", nextVaccine: "Next vaccine", note: "Notes",
+      allergies: "Allergies", note: "Notes",
     },
     gender: { male: "Male", female: "Female" },
     neuteredYes: "Yes",
@@ -556,11 +527,6 @@ const STR = {
     deleteConfirm: (n) => `This can't be undone. Remove ${n}?`,
     deleteYes: "Remove",
     cancel: "Cancel",
-    stamp: {
-      expired: ["EXPIRED", (d) => `${d} DAYS AGO`],
-      soon: ["DUE SOON", (d) => `IN ${d} DAYS`],
-      ok: ["VACCINE OK", (d) => `${d} DAYS LEFT`],
-    },
     age: (y, m) => (y === 0 ? `${m} mo` : m === 0 ? `${y} yr${y === 1 ? "" : "s"}` : `${y} yr ${m} mo`),
     stage: { young: { dog: "puppies", cat: "kittens" }, adult: { dog: "adult dogs", cat: "adult cats" }, senior: { dog: "senior dogs", cat: "senior cats" } },
     advice: {
@@ -661,8 +627,6 @@ const STR = {
       neutered: "Neutered", yes: "Yes", no: "No",
       allergies: "Known allergies",
       allergiesHint: "Tap every known allergen. Leave empty if none.",
-      nextVaccine: "Next vaccine due", nextVaccineHint: "Once set, the home screen will remind you as it gets close.",
-      chip: "Microchip number",
       note: "Notes", notePh: "Scared of thunder, eats too fast",
       errName: "Please enter a name.",
       errBirthday: "Please enter a date of birth. Age and food advice depend on it.",
@@ -823,14 +787,6 @@ function ageParts(birthday) {
   return { y, m };
 }
 const ageText = (birthday, L) => { const a = ageParts(birthday); return a ? L.age(a.y, a.m) : "—"; };
-
-function daysUntil(dateStr) {
-  if (!dateStr) return null;
-  const d = new Date(dateStr + "T00:00:00");
-  if (isNaN(d)) return null;
-  const t = new Date(); t.setHours(0, 0, 0, 0);
-  return Math.round((d - t) / 86400000);
-}
 
 function lifeStage(pet) {
   const a = ageParts(pet.birthday);
@@ -1161,7 +1117,7 @@ export default function PetJournal() {
   const L = STR[lang];
 
   /* 登入狀態：開頁時問一次，之後有變化（點了信裡的連結、登出）會自動通知 */
-  const [anonErr, setAnonErr] = useState(false);
+  const [anonErr, setAnonErr] = useState(""); // 顯示 Supabase 回的原始錯誤，方便排查
   useEffect(() => {
     if (!supabaseConfigured) { setSession(null); return; }
     supabase.auth.getSession().then(async ({ data }) => {
@@ -1169,8 +1125,8 @@ export default function PetJournal() {
       if (AUTH_MODE !== "anonymous") { setSession(null); return; }
       /* 訪客模式：沒登入就自動開一個匿名帳號，同一個瀏覽器之後都會認得 */
       const { data: a, error } = await supabase.auth.signInAnonymously();
-      if (error || !a.session) { setAnonErr(true); setSession(null); } else setSession(a.session);
-    });
+      if (error || !a.session) { setAnonErr((error && (error.message || String(error))) || "no session returned"); setSession(null); } else setSession(a.session);
+    }).catch((e) => { setAnonErr(e?.message || String(e)); setSession(null); });
     const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => { if (s) setSession(s); });
     return () => sub.subscription.unsubscribe();
   }, []);
@@ -1208,7 +1164,9 @@ export default function PetJournal() {
   let body;
   if (!supabaseConfigured) body = <div className="pp-notice">{L.auth.notConfigured}</div>;
   else if (session === undefined || loading) body = <div className="pp-notice">{L.loading}</div>;
-  else if (!session) body = AUTH_MODE === "anonymous" ? <div className="pp-notice">{anonErr ? L.auth.anonFail : L.loading}</div> : <Login />;
+  else if (!session) body = AUTH_MODE === "anonymous"
+    ? <div className="pp-notice">{anonErr ? L.auth.anonFail : L.loading}{anonErr && <div style={{ marginTop: 14, fontFamily: "var(--font-type)", fontSize: 11, wordBreak: "break-all" }}>Supabase: {anonErr}</div>}</div>
+    : <Login />;
   else if (loadErr) body = <div className="pp-notice">{L.auth.loadFail}</div>;
   else if (view.name === "form") body = <PetForm pet={current} onCancel={() => setView(current ? { name: "detail", id: current.id } : { name: "list" })} onSave={savePet} />;
   else if (view.name === "check" && current) body = <CheckProduct pet={current} onBack={() => setView({ name: "detail", id: current.id })} />;
@@ -1289,7 +1247,6 @@ function LangToggle() {
 
 function List({ pets, onOpen, onAdd, storageOk, email, onLogout }) {
   const { lang, L } = useL();
-  const due = pets.map((p) => ({ p, d: daysUntil(p.nextVaccine) })).filter((x) => x.d !== null && x.d <= 30).sort((a, b) => a.d - b.d);
 
   return (
     <>
@@ -1307,14 +1264,6 @@ function List({ pets, onOpen, onAdd, storageOk, email, onLogout }) {
       </header>
 
       {!storageOk && <div className="pp-alert warn">{L.storageWarn}</div>}
-
-      {due.length > 0 && (
-        <div className="pp-alert">
-          {due.map(({ p, d }) => (
-            <div key={p.id}><b>{p.name}</b>{d < 0 ? L.dueExpired(Math.abs(d)) : d === 0 ? L.dueToday : L.dueIn(d)}</div>
-          ))}
-        </div>
-      )}
 
       <div className="pp-body">
         {pets.length === 0 ? (
@@ -1353,17 +1302,9 @@ function List({ pets, onOpen, onAdd, storageOk, email, onLogout }) {
 function Detail({ pet, onBack, onEdit, onCheck, onDelete }) {
   const { lang, L } = useL();
   const [confirm, setConfirm] = useState(false);
-  const d = daysUntil(pet.nextVaccine);
   const advice = foodAdvice(pet, L, lang);
   const picks = recommendProducts(pet, L, lang);
   const mates = playmateAdvice(pet, L);
-
-  let stamp = null;
-  if (d !== null) {
-    const key = d < 0 ? "expired" : d <= 30 ? "soon" : "ok";
-    const [s1, s2] = L.stamp[key];
-    stamp = { cls: key === "ok" ? "ok" : "", s1, s2: s2(Math.abs(d)) };
-  }
 
   return (
     <>
@@ -1377,16 +1318,13 @@ function Detail({ pet, onBack, onEdit, onCheck, onDelete }) {
         <span className="tape" />
         <div className="pp-page-head">
           <Photo src={pet.photo} species={pet.species} breed={pet.breed} big />
-          <div style={{ minWidth: 0, paddingRight: stamp ? 70 : 0 }}>
+          <div style={{ minWidth: 0 }}>
             <h1 className="pp-big-name">{pet.name}</h1>
             <div className="pp-big-sub">
               {breedLabel(pet.species, pet.breed, lang) || L.speciesName[pet.species]}<br />{ageText(pet.birthday, L)}
             </div>
           </div>
         </div>
-        {stamp && (
-          <div className={`pp-stamp ${stamp.cls}`}><div className="in"><div className="s1">{stamp.s1}</div><div className="s2">{stamp.s2}</div></div></div>
-        )}
         <dl className="pp-fields">
           <Row k={L.rows.species} v={L.speciesName[pet.species]} />
           <Row k={L.rows.gender} v={L.gender[pet.gender] || "—"} />
@@ -1394,8 +1332,6 @@ function Detail({ pet, onBack, onEdit, onCheck, onDelete }) {
           <Row k={L.rows.weight} v={pet.weightKg ? L.kg(pet.weightKg) : "—"} />
           <Row k={L.rows.neutered} v={pet.neutered ? L.neuteredYes : L.neuteredNo} />
           <Row k={L.rows.allergies} v={pet.allergies?.length ? allergenList(pet.allergies, lang, L) : L.noAllergy} />
-          <Row k={L.rows.chip} v={pet.chipId || "—"} />
-          <Row k={L.rows.nextVaccine} v={pet.nextVaccine || "—"} />
           {pet.note && <Row k={L.rows.note} v={pet.note} />}
         </dl>
         <div className="pp-type">{L.est} {(pet.birthday || "").replace(/-/g, ".")}</div>
@@ -1617,12 +1553,12 @@ function CheckProduct({ pet, onBack }) {
 
 /* ---------------- 表單 ---------------- */
 
-const EMPTY = { name: "", species: "dog", breed: "", gender: "", birthday: "", weightKg: "", neutered: false, allergies: [], chipId: "", nextVaccine: "", note: "", photo: "" };
+const EMPTY = { name: "", species: "dog", breed: "", gender: "", birthday: "", weightKg: "", neutered: false, allergies: [], note: "", photo: "" };
 
 function PetForm({ pet, onSave, onCancel }) {
   const { lang, L } = useL();
   const F = L.form;
-  const [f, setF] = useState(() => pet ? { ...EMPTY, ...pet, breed: breedKey(pet.species, pet.breed), allergies: (pet.allergies || []).map(normalizeAllergen).filter(Boolean) } : { ...EMPTY });
+  const [f, setF] = useState(() => pet ? { ...EMPTY, ...pet, breed: breedKey(pet.species, pet.breed), allergies: (pet.allergies || []).map(normalizeAllergen).filter(Boolean), chipId: undefined, nextVaccine: undefined } : { ...EMPTY });
   const today = todayISO();
   const [err, setErr] = useState("");
   const fileRef = useRef(null);
@@ -1757,17 +1693,6 @@ function PetForm({ pet, onSave, onCancel }) {
               ))}
             </div>
             <div className="pp-hint">{F.allergiesHint}</div>
-          </div>
-
-          <div className="pp-field">
-            <label className="pp-label" htmlFor="nv">{F.nextVaccine}</label>
-            <input id="nv" className="pp-input" type="date" value={f.nextVaccine} onChange={(e) => set("nextVaccine", e.target.value)} />
-            <div className="pp-hint">{F.nextVaccineHint}</div>
-          </div>
-
-          <div className="pp-field">
-            <label className="pp-label" htmlFor="ch">{F.chip}</label>
-            <input id="ch" className="pp-input" value={f.chipId} onChange={(e) => set("chipId", e.target.value)} placeholder="900123456789012" />
           </div>
 
           <div className="pp-field">
