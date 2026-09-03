@@ -35,6 +35,8 @@ import { loadPets, upsertPet, deletePet, loadLang, saveLang } from "./lib/db";
 
    v2.6：商品檢查的手動輸入改成「常見成分點選（多選）＋自由文字補充」，兩者合併後比對。
 
+   v2.7：新增「所在城市」欄位（下拉選單，存代碼，顯示時翻譯；資料庫加 city 欄）。
+
    資料存放：Supabase（見 src/lib/db.js、supabase/schema.sql）；語言偏好存 localStorage
 ------------------------------------------------------------------ */
 
@@ -362,7 +364,7 @@ const STR = {
     speciesName: { dog: "犬", cat: "貓" },
     rows: {
       species: "物種", gender: "性別", birthday: "生日", weight: "體重", neutered: "結紮",
-      allergies: "過敏原", note: "備註",
+      allergies: "過敏原", city: "所在城市", note: "備註",
     },
     gender: { male: "公", female: "母" },
     neuteredYes: "已結紮",
@@ -484,6 +486,7 @@ const STR = {
       neutered: "結紮狀態", yes: "已結紮", no: "未結紮",
       allergies: "已知過敏原",
       allergiesHint: "點選所有已知的過敏原，沒有就不用選。",
+      city: "所在城市", cityHint: "之後找玩伴、揪團、附近診所都會用到。",
       note: "備註", notePh: "怕打雷、不能吃太快",
       errName: "請填寫名字。",
       errBirthday: "請填寫生日，年齡與飼料建議需要用到。",
@@ -537,7 +540,7 @@ const STR = {
     speciesName: { dog: "Dog", cat: "Cat" },
     rows: {
       species: "Species", gender: "Sex", birthday: "Date of birth", weight: "Weight", neutered: "Neutered",
-      allergies: "Allergies", note: "Notes",
+      allergies: "Allergies", city: "City", note: "Notes",
     },
     gender: { male: "Male", female: "Female" },
     neuteredYes: "Yes",
@@ -659,6 +662,7 @@ const STR = {
       neutered: "Neutered", yes: "Yes", no: "No",
       allergies: "Known allergies",
       allergiesHint: "Tap every known allergen. Leave empty if none.",
+      city: "City", cityHint: "Used later for playmates, meet-ups and nearby clinics.",
       note: "Notes", notePh: "Scared of thunder, eats too fast",
       errName: "Please enter a name.",
       errBirthday: "Please enter a date of birth. Age and food advice depend on it.",
@@ -703,6 +707,22 @@ const BREEDS = {
     other: ["其他", "Other"],
   },
 };
+
+/* 城市：存代碼，顯示時翻譯。順序：新加坡、台灣、亞洲鄰近城市、其他地區 */
+const CITIES = {
+  singapore: ["新加坡", "Singapore"],
+  taipei: ["台北", "Taipei"], newTaipei: ["新北", "New Taipei"], taoyuan: ["桃園", "Taoyuan"],
+  taichung: ["台中", "Taichung"], tainan: ["台南", "Tainan"], kaohsiung: ["高雄", "Kaohsiung"],
+  hongKong: ["香港", "Hong Kong"], macau: ["澳門", "Macau"],
+  kualaLumpur: ["吉隆坡", "Kuala Lumpur"], bangkok: ["曼谷", "Bangkok"], jakarta: ["雅加達", "Jakarta"], manila: ["馬尼拉", "Manila"],
+  tokyo: ["東京", "Tokyo"], osaka: ["大阪", "Osaka"], seoul: ["首爾", "Seoul"],
+  shanghai: ["上海", "Shanghai"], beijing: ["北京", "Beijing"], shenzhen: ["深圳", "Shenzhen"],
+  sydney: ["雪梨", "Sydney"], melbourne: ["墨爾本", "Melbourne"],
+  london: ["倫敦", "London"], newYork: ["紐約", "New York"], losAngeles: ["洛杉磯", "Los Angeles"],
+  toronto: ["多倫多", "Toronto"], vancouver: ["溫哥華", "Vancouver"],
+  other: ["其他", "Other"],
+};
+const cityLabel = (k, lang) => (CITIES[k] ? CITIES[k][li(lang)] : k || "");
 
 const ING = {
   chicken: ["雞肉", "Chicken"], brownRice: ["糙米", "Brown rice"], oats: ["燕麥", "Oats"],
@@ -1326,7 +1346,7 @@ function List({ pets, onOpen, onAdd, storageOk, email, onLogout }) {
                   <div className="pp-meta">
                     {breedLabel(p.species, p.breed, lang) || L.speciesName[p.species]} · {ageText(p.birthday, L)}
                     <br />
-                    {p.weightKg ? L.kg(p.weightKg) : L.weightUnknown}{p.neutered ? ` · ${L.neuteredTag}` : ""}
+                    {p.weightKg ? L.kg(p.weightKg) : L.weightUnknown}{p.neutered ? ` · ${L.neuteredTag}` : ""}{p.city ? ` · ${cityLabel(p.city, lang)}` : ""}
                   </div>
                 </div>
               </div>
@@ -1376,6 +1396,7 @@ function Detail({ pet, onBack, onEdit, onCheck, onDelete }) {
           <Row k={L.rows.weight} v={pet.weightKg ? L.kg(pet.weightKg) : "—"} />
           <Row k={L.rows.neutered} v={pet.neutered ? L.neuteredYes : L.neuteredNo} />
           <Row k={L.rows.allergies} v={pet.allergies?.length ? allergenList(pet.allergies, lang, L) : L.noAllergy} />
+          <Row k={L.rows.city} v={pet.city ? cityLabel(pet.city, lang) : "—"} />
           {pet.note && <Row k={L.rows.note} v={pet.note} />}
         </dl>
         <div className="pp-type">{L.est} {(pet.birthday || "").replace(/-/g, ".")}</div>
@@ -1618,7 +1639,7 @@ function CheckProduct({ pet, onBack }) {
 
 /* ---------------- 表單 ---------------- */
 
-const EMPTY = { name: "", species: "dog", breed: "", gender: "", birthday: "", weightKg: "", neutered: false, allergies: [], note: "", photo: "" };
+const EMPTY = { name: "", species: "dog", breed: "", gender: "", birthday: "", weightKg: "", neutered: false, allergies: [], city: "", note: "", photo: "" };
 
 function PetForm({ pet, onSave, onCancel }) {
   const { lang, L } = useL();
@@ -1762,6 +1783,15 @@ function PetForm({ pet, onSave, onCancel }) {
               ))}
             </div>
             <div className="pp-hint">{F.allergiesHint}</div>
+          </div>
+
+          <div className="pp-field">
+            <label className="pp-label" htmlFor="ct">{F.city}</label>
+            <select id="ct" className="pp-select" value={f.city || ""} onChange={(e) => set("city", e.target.value)}>
+              <option value="">{F.pick}</option>
+              {Object.keys(CITIES).map((k) => <option key={k} value={k}>{CITIES[k][li(lang)]}</option>)}
+            </select>
+            <div className="pp-hint">{F.cityHint}</div>
           </div>
 
           <div className="pp-field">
