@@ -29,6 +29,8 @@ import { loadPets, upsertPet, deletePet, loadLang, saveLang } from "./lib/db";
    v2.4：移除晶片號碼與疫苗到期提醒（欄位、首頁便利貼、詳細頁貼紙）。
       多筆健康紀錄（含疫苗）之後以獨立功能加回。
 
+   v2.5：體重改成拉桿（依物種給範圍）＋ −／＋ 微調 0.1 公斤，可清除。
+
    資料存放：Supabase（見 src/lib/db.js、supabase/schema.sql）；語言偏好存 localStorage
 ------------------------------------------------------------------ */
 
@@ -237,6 +239,25 @@ img.pp-photo{display:block;}
 .pp-why li::before{content:"";position:absolute;left:2px;top:9px;width:7px;height:7px;border-radius:50%;background:var(--ok);}
 .pp-why.warn li::before{background:var(--berry);}
 .pp-none{padding:12px 16px 14px;font-size:13px;color:var(--ink-soft);line-height:1.8;}
+
+
+/* ---- 體重拉桿 ---- */
+.pp-wt{display:flex;align-items:center;gap:10px;margin-bottom:6px;}
+.pp-wt-val{font-family:var(--font-round);font-size:28px;font-weight:700;min-width:92px;line-height:1;}
+.pp-wt-val[data-empty="1"]{color:#B9AB93;}
+.pp-wt-val small{font-size:12px;color:var(--ink-soft);margin-left:5px;font-weight:400;}
+.pp-wt-btn{width:42px;height:42px;border-radius:50%;background:#fff;border:1px solid var(--rule);
+  font-size:20px;line-height:1;color:var(--ink);box-shadow:0 1px 3px rgba(59,48,36,.14);flex:0 0 auto;}
+.pp-wt-clear{margin-left:auto;background:none;border:none;color:var(--ink-soft);font-size:11px;
+  font-family:var(--font-type);letter-spacing:.08em;text-decoration:underline;text-underline-offset:3px;padding:6px 0;}
+.pp-range{-webkit-appearance:none;appearance:none;width:100%;height:36px;background:transparent;margin:0;display:block;}
+.pp-range::-webkit-slider-runnable-track{height:4px;background:var(--rule);border-radius:2px;}
+.pp-range::-webkit-slider-thumb{-webkit-appearance:none;width:30px;height:30px;border-radius:50%;background:#fff;
+  border:3px solid var(--ink);margin-top:-13px;box-shadow:0 2px 5px rgba(59,48,36,.25);}
+.pp-range::-moz-range-track{height:4px;background:var(--rule);border-radius:2px;}
+.pp-range::-moz-range-thumb{width:24px;height:24px;border-radius:50%;background:#fff;border:3px solid var(--ink);box-shadow:0 2px 5px rgba(59,48,36,.25);}
+.pp-range-scale{display:flex;justify-content:space-between;font-family:var(--font-type);font-size:10px;
+  color:var(--ink-soft);letter-spacing:.06em;margin-top:-2px;}
 
 /* ---- 表單 ---- */
 .pp-form{padding:12px 16px 40px;}
@@ -451,7 +472,7 @@ const STR = {
       breed: "品種", pick: "請選擇", breedOtherPh: "請輸入品種",
       gender: "性別", male: "公", female: "母",
       birthday: "生日", birthdayHint: "不確定的話填領養日期就好，之後可以改。",
-      weight: "體重（公斤）",
+      weight: "體重（公斤）", weightHint: "拉到大概的位置，再用 −／＋ 微調。不清楚可以先不填。", weightClear: "清除",
       neutered: "結紮狀態", yes: "已結紮", no: "未結紮",
       allergies: "已知過敏原",
       allergiesHint: "點選所有已知的過敏原，沒有就不用選。",
@@ -623,7 +644,7 @@ const STR = {
       breed: "Breed", pick: "Select", breedOtherPh: "Enter breed",
       gender: "Sex", male: "Male", female: "Female",
       birthday: "Date of birth", birthdayHint: "Not sure? Use the adoption date. You can change it later.",
-      weight: "Weight (kg)",
+      weight: "Weight (kg)", weightHint: "Drag to roughly the right spot, then fine-tune with − / +. Leave empty if unsure.", weightClear: "Clear",
       neutered: "Neutered", yes: "Yes", no: "No",
       allergies: "Known allergies",
       allergiesHint: "Tap every known allergen. Leave empty if none.",
@@ -1568,7 +1589,10 @@ function PetForm({ pet, onSave, onCancel }) {
   const breedSel = breedOther ? "other" : breedTable[f.breed] ? f.breed : "";
   const set = (k, v) => setF((s) => ({ ...s, [k]: v }));
 
-  function changeSpecies(sp) { setF((s) => ({ ...s, species: sp, breed: breedOther || BREEDS[sp][s.breed] ? s.breed : "" })); }
+  function changeSpecies(sp) {
+    setF((s) => ({ ...s, species: sp, breed: breedOther || BREEDS[sp][s.breed] ? s.breed : "",
+      weightKg: s.weightKg !== "" && Number(s.weightKg) > WT_RANGE[sp].max ? WT_RANGE[sp].max : s.weightKg }));
+  }
   function toggleAllergen(k) { setF((s) => ({ ...s, allergies: s.allergies.includes(k) ? s.allergies.filter((x) => x !== k) : [...s.allergies, k] })); }
   function changeBreed(v) { if (v === "other") { setBreedOther(true); set("breed", ""); } else { setBreedOther(false); set("breed", v); } }
   const lastFileRef = useRef(null); // 原始照片檔，辨識時用較高解析度
@@ -1671,8 +1695,9 @@ function PetForm({ pet, onSave, onCancel }) {
           </div>
 
           <div className="pp-field">
-            <label className="pp-label" htmlFor="wt">{F.weight}</label>
-            <input id="wt" className="pp-input" type="number" inputMode="decimal" step="0.1" value={f.weightKg} onChange={(e) => set("weightKg", e.target.value)} placeholder="8.5" />
+            <label className="pp-label">{F.weight}</label>
+            <WeightPicker value={f.weightKg} species={f.species} onChange={(v) => set("weightKg", v)} />
+            <div className="pp-hint">{F.weightHint}</div>
           </div>
 
           <div className="pp-field">
@@ -1709,6 +1734,31 @@ function PetForm({ pet, onSave, onCancel }) {
         </div>
       </div>
       <div style={{ height: 40 }} />
+    </>
+  );
+}
+
+
+/* ---- 體重拉桿：拉大概位置，用 −／＋ 微調 0.1 ---- */
+const WT_RANGE = { dog: { min: 0.5, max: 60, def: 10 }, cat: { min: 0.5, max: 15, def: 4 } };
+function WeightPicker({ value, species, onChange }) {
+  const { L } = useL();
+  const F = L.form;
+  const r = WT_RANGE[species] || WT_RANGE.dog;
+  const has = value !== "" && value != null && !isNaN(Number(value));
+  const v = has ? Math.min(r.max, Math.max(r.min, Number(value))) : r.def;
+  const fmt = (n) => (Math.round(n * 10) / 10).toFixed(1).replace(/\.0$/, "");
+  const setV = (n) => onChange(Math.round(Math.min(r.max, Math.max(r.min, n)) * 10) / 10);
+  return (
+    <>
+      <div className="pp-wt">
+        <div className="pp-wt-val" data-empty={has ? "0" : "1"}>{has ? fmt(v) : "—"}<small>kg</small></div>
+        <button type="button" className="pp-wt-btn" onClick={() => setV(v - 0.1)} aria-label="-0.1 kg">−</button>
+        <button type="button" className="pp-wt-btn" onClick={() => setV(v + 0.1)} aria-label="+0.1 kg">＋</button>
+        {has && <button type="button" className="pp-wt-clear" onClick={() => onChange("")}>{F.weightClear}</button>}
+      </div>
+      <input className="pp-range" type="range" min={r.min} max={r.max} step="0.1" value={v} onChange={(e) => setV(Number(e.target.value))} aria-label={F.weight} />
+      <div className="pp-range-scale"><span>{r.min} kg</span><span>{r.max} kg</span></div>
     </>
   );
 }
