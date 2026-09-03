@@ -31,6 +31,8 @@ import { loadPets, upsertPet, deletePet, loadLang, saveLang } from "./lib/db";
 
    v2.5：體重改成拉桿（依物種給範圍）＋ −／＋ 微調 0.1 公斤，可清除。
 
+   v2.5.1：首頁標題橫幅擺正（順便修掉 .pp-label 與表單標籤同名互相覆蓋的問題）。
+
    資料存放：Supabase（見 src/lib/db.js、supabase/schema.sql）；語言偏好存 localStorage
 ------------------------------------------------------------------ */
 
@@ -78,11 +80,12 @@ const CSS = `
 
 /* ---- 頁首：牛皮筆記本封面 + 貼紙標籤 ---- */
 .pp-top{padding:30px 20px 22px;position:relative;}
-.pp-label{
+.pp-banner{
   display:inline-block;background:var(--card);padding:12px 18px 10px;
-  box-shadow:0 2px 6px rgba(59,48,36,.2);transform:rotate(-1.2deg);
+  box-shadow:0 2px 6px rgba(59,48,36,.2);
   position:relative;border-radius:2px;
 }
+.pp-banner .tape{transform:rotate(0);left:50%;margin-left:-36px;top:-10px;}
 .pp-title{font-family:var(--font-round);font-size:24px;margin:0;font-weight:700;letter-spacing:.02em;}
 .pp-sub{font-family:var(--font-type);font-size:10px;letter-spacing:.24em;color:var(--ink-soft);margin-top:4px;}
 .pp-count{margin-top:18px;font-family:var(--font-type);font-size:11px;letter-spacing:.12em;color:var(--ink-soft);}
@@ -1224,7 +1227,7 @@ function Login() {
   return (
     <>
       <header className="pp-top">
-        <div className="pp-label">
+        <div className="pp-banner">
           <span className="tape c" />
           <h1 className="pp-title">{L.title}</h1>
           <div className="pp-sub">{L.sub}</div>
@@ -1272,7 +1275,7 @@ function List({ pets, onOpen, onAdd, storageOk, email, onLogout }) {
   return (
     <>
       <header className="pp-top">
-        <div className="pp-label">
+        <div className="pp-banner">
           <span className="tape c" />
           <h1 className="pp-title">{L.title}</h1>
           <div className="pp-sub">{L.sub}</div>
