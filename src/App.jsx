@@ -33,6 +33,8 @@ import { loadPets, upsertPet, deletePet, loadLang, saveLang } from "./lib/db";
 
    v2.5.1：首頁標題橫幅擺正（順便修掉 .pp-label 與表單標籤同名互相覆蓋的問題）。
 
+   v2.6：商品檢查的手動輸入改成「常見成分點選（多選）＋自由文字補充」，兩者合併後比對。
+
    資料存放：Supabase（見 src/lib/db.js、supabase/schema.sql）；語言偏好存 localStorage
 ------------------------------------------------------------------ */
 
@@ -449,6 +451,9 @@ const STR = {
       productTitle: "商品資訊",
       nameLabel: "商品名稱",
       ingLabel: "成分（可修改）",
+      pickIng: "常見成分（點選，可多選）",
+      extraIng: "其他成分（選單裡沒有的，直接抄包裝）",
+      pickedPreview: (t) => `會用來比對的成分：${t}`,
       ingPh: "chicken, brown rice, …",
       stageLabel: "商品適用年齡段",
       stages: { young: "幼年", adult: "成年", senior: "熟齡", all: "全齡", unknown: "不確定" },
@@ -621,6 +626,9 @@ const STR = {
       productTitle: "Product",
       nameLabel: "Product name",
       ingLabel: "Ingredients (editable)",
+      pickIng: "Common ingredients (tap all that apply)",
+      extraIng: "Other ingredients (anything not listed; copy from the pack)",
+      pickedPreview: (t) => `Ingredients used for the check: ${t}`,
       ingPh: "chicken, brown rice, …",
       stageLabel: "Life stage on the pack",
       stages: { young: "Puppy / kitten", adult: "Adult", senior: "Senior", all: "All life stages", unknown: "Not sure" },
@@ -785,6 +793,18 @@ const ALLERGENS = {
   peanut:  { label: ["花生", "Peanut"],  terms: ["peanut", "花生"] },
 };
 const ALLERGEN_KEYS = Object.keys(ALLERGENS);
+
+/* 手動輸入成分時的點選清單：先列 16 個過敏原（比對真正在乎的），再列常見的其他成分 */
+const MANUAL_ING = [
+  ...ALLERGEN_KEYS.map((k) => ({ key: "a:" + k, label: ALLERGENS[k].label, term: ALLERGENS[k].terms[0] })),
+  ...["brownRice", "oats", "barley", "sweetPotato", "peas", "chickpeas", "lentils", "pumpkin", "flaxseed", "fishOil", "chickenFat", "chickenLiver", "venison", "whitefish", "herring", "glucosamine"]
+    .map((k) => ({ key: "i:" + k, label: ING[k], term: ING[k][1].toLowerCase() })),
+];
+/* 點選的 + 手打的 → 一段文字，交給 checkProduct 比對 */
+function combineIngredients(picked, extra) {
+  const chosen = MANUAL_ING.filter((m) => picked.includes(m.key)).map((m) => m.term);
+  return [...chosen, (extra || "").trim()].filter(Boolean).join(", ");
+}
 
 /* ==================================================================
    工具函式
@@ -1426,6 +1446,8 @@ function CheckProduct({ pet, onBack }) {
   const [busy, setBusy] = useState("");
   const [msg, setMsg] = useState("");
   const [prod, setProd] = useState(null); // { name, ingredients, stage, source }
+  const [picked, setPicked] = useState([]); // 手動輸入時點選的成分 key
+  const togglePick = (k) => setPicked((p) => (p.includes(k) ? p.filter((x) => x !== k) : [...p, k]));
   const barcodeRef = useRef(null);
   const labelCamRef = useRef(null);
   const labelFileRef = useRef(null);
@@ -1470,7 +1492,8 @@ function CheckProduct({ pet, onBack }) {
     setBusy("");
   }
 
-  const result = prod && prod.ingredients.trim() ? checkProduct(pet, prod) : null;
+  const ingText = prod ? (prod.source === "manual" ? combineIngredients(picked, prod.ingredients) : prod.ingredients) : "";
+  const result = prod && ingText.trim() ? checkProduct(pet, { ...prod, ingredients: ingText }) : null;
   const stageLabel = (s) => (s === "unknown" || s === "all") ? C.stages[s] : L.stage[s][pet.species];
 
   return (
@@ -1539,17 +1562,35 @@ function CheckProduct({ pet, onBack }) {
             <label className="pp-label">{C.nameLabel}</label>
             <input className="pp-input" value={prod.name} onChange={(e) => setProd({ ...prod, name: e.target.value })} />
           </div>
-          <div className="pp-field">
-            <label className="pp-label">{C.ingLabel}</label>
-            <textarea className="pp-textarea" style={{ minHeight: 96 }} value={prod.ingredients} onChange={(e) => setProd({ ...prod, ingredients: e.target.value })} placeholder={C.ingPh} autoFocus={prod.source === "manual"} />
-          </div>
+          {prod.source === "manual" ? (
+            <>
+              <div className="pp-field">
+                <label className="pp-label">{C.pickIng}</label>
+                <div className="pp-chips">
+                  {MANUAL_ING.map((m) => (
+                    <button key={m.key} type="button" className="pp-chip" data-on={picked.includes(m.key) ? "1" : "0"} onClick={() => togglePick(m.key)}>{m.label[li(lang)]}</button>
+                  ))}
+                </div>
+              </div>
+              <div className="pp-field">
+                <label className="pp-label">{C.extraIng}</label>
+                <textarea className="pp-textarea" value={prod.ingredients} onChange={(e) => setProd({ ...prod, ingredients: e.target.value })} placeholder={C.ingPh} />
+                {ingText && <div className="pp-hint">{C.pickedPreview(ingText)}</div>}
+              </div>
+            </>
+          ) : (
+            <div className="pp-field">
+              <label className="pp-label">{C.ingLabel}</label>
+              <textarea className="pp-textarea" style={{ minHeight: 96 }} value={prod.ingredients} onChange={(e) => setProd({ ...prod, ingredients: e.target.value })} placeholder={C.ingPh} />
+            </div>
+          )}
           <div className="pp-field">
             <label className="pp-label">{C.stageLabel}</label>
             <select className="pp-select" value={prod.stage} onChange={(e) => setProd({ ...prod, stage: e.target.value })}>
               {["young", "adult", "senior", "all", "unknown"].map((s) => <option key={s} value={s}>{C.stages[s]}</option>)}
             </select>
           </div>
-          <button className="pp-btn-ghost" onClick={() => { setProd(null); setMsg(""); }}>{C.clear}</button>
+          <button className="pp-btn-ghost" onClick={() => { setProd(null); setPicked([]); setMsg(""); }}>{C.clear}</button>
         </div>
       )}
 
