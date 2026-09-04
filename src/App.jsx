@@ -93,6 +93,7 @@ import { loadPets, upsertPet, deletePet, loadLang, saveLang } from "./lib/db";
 
    v3.10：必填改为名字、物种、品种、性别、生日、体重、结扎、城市；所有栏位标题粗体；生日精度到月份（存 YYYY-MM-01）。
 
+   v4.1：未选中的候选也显示 AI 给的一句优点、一句顾虑（极精简）。
    v4.0.6：首页「＋」按钮回到右侧，往上抬到 Netlify 标签上方（避开 iPhone 底部手势区）。
    v4.0.5：玩伴页等待 AI 时显示转圈；首页新增按钮移到左下角（避开 Netlify 标签）。
    v4.0.4：玩伴页顶部的大照片只在等待结果时显示，结果出来（有最佳配对）后隐藏，避免与 ♥ 配对卡重复。
@@ -343,6 +344,9 @@ img.pp-photo{display:block;}
 .pp-mate-head .pp-tier-h{margin:0;}
 .pp-pair{display:flex;align-items:center;gap:6px;flex:0 0 auto;}
 .pp-heart{color:var(--berry);font-size:22px;line-height:1;}
+.pp-mini{padding:0 16px 12px;font-size:12px;line-height:1.7;color:var(--ink-soft);}
+.pp-mini .pro::before{content:"＋ ";color:var(--ok);font-weight:700;}
+.pp-mini .con::before{content:"－ ";color:var(--berry);font-weight:700;}
 .pp-mate-score{position:absolute;right:14px;bottom:14px;font-family:var(--font-type);font-size:11px;letter-spacing:.06em;
   color:var(--ink);background:#fff;border:1px solid var(--rule);border-radius:999px;padding:4px 10px;}
 .pp-mate.match .pp-mate-score{position:static;display:inline-block;margin:0 16px 10px;font-size:13px;font-weight:700;border-color:var(--tape-c);}
@@ -1296,15 +1300,17 @@ Score each candidate 0-100 as a playmate for MY PET. Consider: life stage compat
 Pick the single best candidate.
 
 Return ONLY a JSON object, no markdown, no explanation:
-{"best_id":"<id>","scores":[{"id":"<id>","score":0-100}],"reasons":{"zh":["3 bullet points in Simplified Chinese, each one full sentence of 25-40 characters, explaining concretely why best_id fits (mention the actual ages, weights or traits)"],"en":["the same 3 points in English, each one sentence of 15-25 words"]}}`;
+{"best_id":"<id>","scores":[{"id":"<id>","score":0-100,"pro":{"zh":"one phrase, under 12 characters, the main point in favour","en":"same, under 6 words"},"con":{"zh":"one phrase, under 12 characters, the main concern (or empty string if none)","en":"same, under 6 words"}}],"reasons":{"zh":["3 bullet points in Simplified Chinese, each one full sentence of 25-40 characters, explaining concretely why best_id fits (mention the actual ages, weights or traits)"],"en":["the same 3 points in English, each one sentence of 15-25 words"]}}`;
 }
 /* 把 AI 的打分套回候选名单：最佳配对排第一、只有它带 Email 与理由 */
 function applyMatch(cands, ai) {
   const scoreOf = new Map((ai.scores || []).map((s) => [s.id, Math.max(0, Math.min(100, Math.round(Number(s.score) || 0)))]));
+  const noteOf = new Map((ai.scores || []).map((s) => [s.id, { pro: s.pro || null, con: s.con || null }]));
   const sorted = [...cands].sort((a, b) => (scoreOf.get(b.id) ?? 0) - (scoreOf.get(a.id) ?? 0));
   const bestId = cands.some((c) => c.id === ai.best_id) ? ai.best_id : sorted[0].id;
   return sorted
     .map((c) => ({ ...c, score: scoreOf.get(c.id) ?? 0, isMatch: c.id === bestId, ownerEmail: c.id === bestId ? c.ownerEmail || "" : "",
+      pro: noteOf.get(c.id)?.pro || null, con: noteOf.get(c.id)?.con || null,
       reasons: c.id === bestId ? { zh: (ai.reasons?.zh || []).slice(0, 3), en: (ai.reasons?.en || []).slice(0, 3) } : null, aiScored: true }))
     .sort((a, b) => (b.isMatch ? 1 : 0) - (a.isMatch ? 1 : 0) || b.score - a.score);
 }
@@ -1316,6 +1322,7 @@ async function loadPlaymates(pet) {
     id: r.id, name: r.name, species: r.species, breed: r.breed || "", gender: r.gender || "", birthday: r.birthday || "",
     weightKg: r.weight_kg == null ? "" : Number(r.weight_kg), neutered: !!r.neutered, city: r.city || "", photo: r.photo || "",
     score: r.score, isMatch: !!r.is_match, ownerEmail: r.owner_email || "", reasons: r.reasons || null, aiScored,
+    pro: r.pro || null, con: r.con || null,
   });
   try {
     const { data, error } = await supabase.functions.invoke("match-playmates", { body: { pet_id: pet.id } });
@@ -2206,6 +2213,12 @@ function Playmates({ pet, allPets, onBack }) {
                 </div>
               </div>
             </div>
+            {!o.isMatch && o.aiScored && (o.pro || o.con) && (
+              <div className="pp-mini">
+                {o.pro && (o.pro[lang] || o.pro.zh) && <div className="pro">{o.pro[lang] || o.pro.zh}</div>}
+                {o.con && (o.con[lang] || o.con.zh) && <div className="con">{o.con[lang] || o.con.zh}</div>}
+              </div>
+            )}
             {o.isMatch && (
               <>
                 <div className="pp-mate-why">
