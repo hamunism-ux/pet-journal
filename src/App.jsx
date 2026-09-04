@@ -44,6 +44,8 @@ import { loadPets, upsertPet, deletePet, loadLang, saveLang } from "./lib/db";
    v2.9：推薦商品只顯示最合適的 1 款；「玩伴建議」改為「養育建議」（運動／美容／健康／環境／社交），
       依物種、月齡、體型、品種類型、結紮、過敏原自動產生。
 
+   v2.10：「檢查一款商品」按鈕改醒目樣式；商品檢查移除「拍成分表由 AI 讀」那一層，剩條碼查詢與手動輸入。
+
    資料存放：Supabase（見 src/lib/db.js、supabase/schema.sql）；語言偏好存 localStorage
 ------------------------------------------------------------------ */
 
@@ -169,6 +171,13 @@ img.pp-photo{display:block;}
   padding:14px 22px;border-radius:10px;font-size:15px;
   font-family:var(--font-round);width:100%;
 }
+.pp-btn-check{
+  background:var(--berry);color:#fff;border:none;width:100%;
+  padding:17px 22px;border-radius:12px;font-size:16px;font-weight:700;
+  font-family:var(--font-round);letter-spacing:.02em;
+  box-shadow:0 4px 12px rgba(158,61,87,.32);
+}
+.pp-btn-check:active{transform:translateY(1px);box-shadow:0 2px 6px rgba(158,61,87,.3);}
 .pp-btn-ghost{
   background:transparent;color:var(--ink);
   border:1.5px dashed var(--ink-soft);
@@ -479,14 +488,8 @@ const STR = {
       notFound: "資料庫裡沒有這個條碼。請改用下面的方式。",
       netError: "無法連線到資料庫（預覽環境可能限制對外連線，正式版不會）。請改用下面的方式。",
       opffNote: "資料來源：Open Pet Food Facts（開源社群資料庫）。目前僅比對此資料庫，收錄量有限，亞洲市場商品常查不到。",
-      tier2: "② 拍成分表",
-      tier2d: "查不到時，拍下包裝上的成分表，由 AI 讀出文字。",
-      takeLabel: "拍成分表",
-      pickLabel: "從相簿選擇",
-      reading: "AI 讀取中…",
-      aiFail: "讀取失敗，請改用手動輸入。",
-      tier3: "③ 手動輸入",
-      tier3d: "直接抄下包裝上的成分表。",
+      tier3: "② 手動輸入",
+      tier3d: "查不到時，直接照包裝上的成分表點選或輸入。",
       manualStart: "開始手動輸入",
       productTitle: "商品資訊",
       nameLabel: "商品名稱",
@@ -498,7 +501,7 @@ const STR = {
       stageLabel: "商品適用年齡段",
       stages: { young: "幼年", adult: "成年", senior: "熟齡", all: "全齡", unknown: "不確定" },
       sourceLabel: "來源：",
-      sources: { opff: "Open Pet Food Facts", ai: "AI 讀取照片（請核對）", manual: "手動輸入" },
+      sources: { opff: "Open Pet Food Facts", manual: "手動輸入" },
       clear: "清除重來",
       resultTitle: "判斷結果",
       verdict: { bad: "不建議", ok: "可以考慮", stageMismatch: "年齡段不符", stageUnknown: "過敏原沒問題，年齡段不確定" },
@@ -688,14 +691,8 @@ const STR = {
       notFound: "That barcode isn't in the database. Try one of the options below.",
       netError: "Couldn't reach the database (the preview environment may block outside connections; the release version won't). Try one of the options below.",
       opffNote: "Source: Open Pet Food Facts (open, community-maintained). This is currently the only database checked; coverage is limited, especially for Asian markets.",
-      tier2: "② Photo of the label",
-      tier2d: "If the lookup fails, photograph the ingredient list and let AI read it.",
-      takeLabel: "Take photo of label",
-      pickLabel: "Choose from library",
-      reading: "AI is reading…",
-      aiFail: "Couldn't read that. Please enter it manually.",
-      tier3: "③ Enter manually",
-      tier3d: "Copy the ingredient list from the pack.",
+      tier3: "② Enter manually",
+      tier3d: "If the lookup fails, tap or type the ingredients from the pack.",
       manualStart: "Start manual entry",
       productTitle: "Product",
       nameLabel: "Product name",
@@ -707,7 +704,7 @@ const STR = {
       stageLabel: "Life stage on the pack",
       stages: { young: "Puppy / kitten", adult: "Adult", senior: "Senior", all: "All life stages", unknown: "Not sure" },
       sourceLabel: "Source: ",
-      sources: { opff: "Open Pet Food Facts", ai: "AI read from photo (please verify)", manual: "Entered manually" },
+      sources: { opff: "Open Pet Food Facts", manual: "Entered manually" },
       clear: "Start over",
       resultTitle: "Result",
       verdict: { bad: "Not recommended", ok: "Worth considering", stageMismatch: "Life stage mismatch", stageUnknown: "Allergens OK, life stage unclear" },
@@ -1190,20 +1187,6 @@ async function scanBarcodeFromFile(file, onStage) {
   return { code: await readBarcodeDigitsWithAI(file), via: "ai" };
 }
 
-const LABEL_PROMPT = `This is a photo of a pet food package or its ingredient label.
-Extract and return ONLY a JSON object, no markdown, no explanation:
-{"product_name": string, "ingredients": string[] (each ingredient as printed, in the original language), "stage": "young"|"adult"|"senior"|"all"|"unknown"}
-For "stage": young = puppy/kitten/junior/growth; senior = senior/mature/7+; all = all life stages; adult = adult; otherwise unknown.
-If no ingredient list is visible, return an empty ingredients array.`;
-
-async function readLabelWithAI(dataUrl) {
-  const b64 = dataUrl.split(",")[1];
-  const j = await visionRequest(b64, LABEL_PROMPT, 1000);
-  const ingredients = Array.isArray(j.ingredients) ? j.ingredients.join(", ") : String(j.ingredients || "");
-  const stage = ["young", "adult", "senior", "all"].includes(j.stage) ? j.stage : inferStage(j.product_name || "");
-  return { name: j.product_name || "", ingredients, stage };
-}
-
 /* ---- 辨識寵物照片：物種與品種 ----
    重點是把答案「限定在我們自己的品種表裡」：AI 只能回傳 BREEDS 裡的代碼，
    回傳其他東西一律當作沒猜到。這樣不會出現表裡沒有的品種，剪影也能對上。 */
@@ -1489,7 +1472,7 @@ function Detail({ pet, onBack, onEdit, onCheck, onDelete }) {
       </div>
 
       <div style={{ padding: "0 16px 20px" }}>
-        <button className="pp-btn" onClick={onCheck}>{L.checkBtn}</button>
+        <button className="pp-btn-check" onClick={onCheck}>{L.checkBtn}</button>
       </div>
 
       <div className="paper pp-annex">
@@ -1555,8 +1538,6 @@ function CheckProduct({ pet, onBack }) {
   const [picked, setPicked] = useState([]); // 手動輸入時點選的成分 key
   const togglePick = (k) => setPicked((p) => (p.includes(k) ? p.filter((x) => x !== k) : [...p, k]));
   const barcodeRef = useRef(null);
-  const labelCamRef = useRef(null);
-  const labelFileRef = useRef(null);
   const [scanNote, setScanNote] = useState(""); // 條碼是 AI 讀的時候，提醒使用者核對
 
   const petStageName = L.stage[lifeStage(pet)][pet.species];
@@ -1586,17 +1567,6 @@ function CheckProduct({ pet, onBack }) {
   }
 
   function onCodeChange(v) { setCode(v); setScanNote(""); }
-
-  async function onLabelPhoto(e) {
-    const file = e.target.files?.[0]; e.target.value = ""; if (!file) return;
-    setBusy("ai"); setMsg("");
-    try {
-      const dataUrl = await readImage(file, 1400);
-      const r = await readLabelWithAI(dataUrl);
-      setProd({ ...r, source: "ai" });
-    } catch { setMsg(C.aiFail); }
-    setBusy("");
-  }
 
   const ingText = prod ? (prod.source === "manual" ? combineIngredients(picked, prod.ingredients) : prod.ingredients) : "";
   const result = prod && ingText.trim() ? checkProduct(pet, { ...prod, ingredients: ingText }) : null;
@@ -1635,19 +1605,6 @@ function CheckProduct({ pet, onBack }) {
             {scanNote && <div className="pp-msg soft">{scanNote}</div>}
             {msg && (msg === C.notFound || msg === C.netError || msg === C.scanFail) && <div className="pp-msg">{msg}</div>}
             <div className="pp-src">{C.opffNote}</div>
-          </div>
-
-          <div className="paper pp-tier">
-            <span className="tape b" />
-            <h2 className="pp-tier-h">{C.tier2}</h2>
-            <p className="pp-tier-d">{C.tier2d}</p>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              <button className="pp-btn" onClick={() => labelCamRef.current?.click()} disabled={!!busy}>{busy === "ai" ? C.reading : C.takeLabel}</button>
-              <button className="pp-btn-ghost" onClick={() => labelFileRef.current?.click()} disabled={!!busy}>{C.pickLabel}</button>
-              <input ref={labelCamRef} type="file" accept="image/*" capture="environment" onChange={onLabelPhoto} style={{ display: "none" }} />
-              <input ref={labelFileRef} type="file" accept="image/*" onChange={onLabelPhoto} style={{ display: "none" }} />
-            </div>
-            {msg === C.aiFail && <div className="pp-msg">{msg}</div>}
           </div>
 
           <div className="paper pp-tier">
