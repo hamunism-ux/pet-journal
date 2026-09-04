@@ -63,6 +63,8 @@ import { loadPets, upsertPet, deletePet, loadLang, saveLang } from "./lib/db";
 
    v3.5：照片改存 Supabase Storage（pet-photos 桶），资料表 photo 栏只存网址；旧的 data: 照片仍可显示，下次编辑时自动搬过去。
 
+   v3.5.1：照片上限改 8 MB，表单加提示。
+
    资料存放：Supabase（见 src/lib/db.js、supabase/schema.sql）；语言偏好存 localStorage
 ------------------------------------------------------------------ */
 
@@ -565,7 +567,7 @@ const STR = {
     form: {
       newLabel: "NEW", editLabel: "EDIT",
       photo: "照片", takePhoto: "拍照", fromGallery: "从相簿选择", removePhoto: "移除照片",
-      photoHint: "在手机上「拍照」会直接开启相机；在电脑上会开启档案选择视窗。",
+      photoHint: "在手机上「拍照」会直接开启相机；在电脑上会开启档案选择视窗。照片上限 8 MB。",
       name: "名字", namePh: "小白",
       species: "物种", dog: "犬", cat: "猫",
       breed: "品种", pick: "请选择", breedOtherPh: "请输入品种",
@@ -793,7 +795,7 @@ const STR = {
     form: {
       newLabel: "NEW", editLabel: "EDIT",
       photo: "Photo", takePhoto: "Take photo", fromGallery: "Choose from library", removePhoto: "Remove photo",
-      photoHint: "On a phone, \"Take photo\" opens the camera. On a computer it opens the file picker.",
+      photoHint: "On a phone, \"Take photo\" opens the camera. On a computer it opens the file picker. Photos up to 8 MB.",
       name: "Name", namePh: "Mochi",
       species: "Species", dog: "Dog", cat: "Cat",
       breed: "Breed", pick: "Select", breedOtherPh: "Enter breed",
