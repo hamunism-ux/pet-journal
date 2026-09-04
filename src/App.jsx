@@ -82,6 +82,8 @@ import { loadPets, upsertPet, deletePet, loadLang, saveLang } from "./lib/db";
 
    v3.8.3：拿掉「预填 JSON 开头」（Sonnet 4.6 不支援预填，会直接报错）；失败时画面显示原始错误原因。
 
+   v3.8.4：商品检查页顶部只留标题，拿掉说明小字与宠物状态行。
+
    资料存放：Supabase（见 src/lib/db.js、supabase/schema.sql）；语言偏好存 localStorage
 ------------------------------------------------------------------ */
 
@@ -1923,9 +1925,7 @@ function CheckProduct({ pet, onBack }) {
 
       <div className="paper pp-tier" style={{ marginTop: 18 }}>
         <span className="tape c" />
-        <h2 className="pp-tier-h">{C.title(pet.name)}</h2>
-        <p className="pp-tier-d" style={{ marginBottom: 6 }}>{C.criteria}</p>
-        <div className="pp-src">{C.petLine(petStageName, allergyText)}</div>
+        <h2 className="pp-tier-h" style={{ margin: 0 }}>{C.title(pet.name)}</h2>
       </div>
 
       {!prod && (
