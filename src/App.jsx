@@ -89,6 +89,8 @@ import { loadPets, upsertPet, deletePet, loadLang, saveLang } from "./lib/db";
 
    v3.9.1：表单照片区文案精简。
 
+   v3.9.2：表单必填项（名字、物种、生日）标签加粗、星号醒目，表单顶端一行「＊必填」。
+
    资料存放：Supabase（见 src/lib/db.js、supabase/schema.sql）；语言偏好存 localStorage
 ------------------------------------------------------------------ */
 
@@ -335,6 +337,9 @@ img.pp-photo{display:block;}
 .pp-field{margin-bottom:18px;}
 .pp-label{display:block;font-size:12.5px;color:var(--ink-soft);margin-bottom:7px;font-family:var(--font-round);}
 .pp-label i{font-style:normal;color:var(--berry);margin-left:3px;}
+.pp-label.req{color:var(--ink);font-weight:700;font-size:13.5px;}
+.pp-label.req i{font-size:15px;font-weight:700;}
+.pp-req-note{font-size:11.5px;color:var(--berry);margin:0 0 14px;font-family:var(--font-round);}
 .pp-input,.pp-select,.pp-textarea{
   width:100%;padding:12px 12px;font-size:15px;
   border:1px solid var(--rule);border-radius:8px;
@@ -623,7 +628,7 @@ const STR = {
       resultNote: "只看过敏原与年龄段两项。慢性病、处方需求请问兽医。",
     },
     form: {
-      newLabel: "NEW", editLabel: "EDIT",
+      newLabel: "NEW", editLabel: "EDIT", reqNote: "＊ 必填",
       photo: "照片", takePhoto: "拍照", fromGallery: "从相簿选择", removePhoto: "移除照片",
       photoHint: "照片上限 8 MB。",
       name: "名字", namePh: "小白",
@@ -871,7 +876,7 @@ const STR = {
       resultNote: "Checks allergens and life stage only. For chronic conditions or prescription needs, ask your vet.",
     },
     form: {
-      newLabel: "NEW", editLabel: "EDIT",
+      newLabel: "NEW", editLabel: "EDIT", reqNote: "* Required",
       photo: "Photo", takePhoto: "Take photo", fromGallery: "Choose from library", removePhoto: "Remove photo",
       photoHint: "Photos up to 8 MB.",
       name: "Name", namePh: "Mochi",
@@ -2215,6 +2220,7 @@ function PetForm({ pet, onSave, onCancel }) {
       <div className="paper" style={{ margin: "18px 16px 0" }}>
         <span className="tape b" />
         <div className="pp-form">
+          <div className="pp-req-note">{F.reqNote}</div>
           <div className="pp-field">
             <label className="pp-label">{F.photo}</label>
             <div className="pp-photo-pick">
@@ -2237,12 +2243,12 @@ function PetForm({ pet, onSave, onCancel }) {
           </div>
 
           <div className="pp-field">
-            <label className="pp-label" htmlFor="nm">{F.name}<i>*</i></label>
+            <label className="pp-label req" htmlFor="nm">{F.name}<i>*</i></label>
             <input id="nm" className="pp-input" value={f.name} onChange={(e) => set("name", e.target.value)} placeholder={F.namePh} />
           </div>
 
           <div className="pp-field">
-            <label className="pp-label">{F.species}<i>*</i></label>
+            <label className="pp-label req">{F.species}<i>*</i></label>
             <div className="pp-seg">
               <button data-on={f.species === "dog" ? "1" : "0"} onClick={() => changeSpecies("dog")}>{F.dog}</button>
               <button data-on={f.species === "cat" ? "1" : "0"} onClick={() => changeSpecies("cat")}>{F.cat}</button>
@@ -2267,7 +2273,7 @@ function PetForm({ pet, onSave, onCancel }) {
           </div>
 
           <div className="pp-field">
-            <label className="pp-label" htmlFor="bd">{F.birthday}<i>*</i></label>
+            <label className="pp-label req" htmlFor="bd">{F.birthday}<i>*</i></label>
             <input id="bd" className="pp-input" type="date" max={today} value={f.birthday} onChange={(e) => set("birthday", e.target.value)} />
             <div className="pp-hint">{F.birthdayHint}</div>
           </div>
