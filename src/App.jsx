@@ -87,6 +87,8 @@ import { loadPets, upsertPet, deletePet, loadLang, saveLang } from "./lib/db";
    v3.9：建档／编辑选好照片后自动让 AI 辨识物种与品种并预选（已选品种时不覆盖）；按钮改为「重新辨识」。
       Netlify 版的 AI 呼叫改走 Supabase Edge Function check-food，金钥只需设在 Supabase 一处。
 
+   v3.9.1：表单照片区文案精简。
+
    资料存放：Supabase（见 src/lib/db.js、supabase/schema.sql）；语言偏好存 localStorage
 ------------------------------------------------------------------ */
 
@@ -623,7 +625,7 @@ const STR = {
     form: {
       newLabel: "NEW", editLabel: "EDIT",
       photo: "照片", takePhoto: "拍照", fromGallery: "从相簿选择", removePhoto: "移除照片",
-      photoHint: "在手机上「拍照」会直接开启相机；在电脑上会开启档案选择视窗。照片上限 8 MB。",
+      photoHint: "照片上限 8 MB。",
       name: "名字", namePh: "小白",
       species: "物种", dog: "犬", cat: "猫",
       breed: "品种", pick: "请选择", breedOtherPh: "请输入品种",
@@ -643,10 +645,9 @@ const STR = {
       guess: "让 AI 辨识物种与品种",
       guessAgain: "重新辨识",
       guessing: "AI 辨识中…",
-      guessDone: (sp, br, conf) => `AI 认为是${sp}${br ? `・${br}` : ""}（把握${conf}），已自动选好。不对请直接改。`,
-      guessNone: "AI 看不出照片里是狗还是猫，请自己选。",
-      guessFail: "辨识失败，请自己选。",
-      guessHint: "选好照片会自动辨识并先选好。米克斯和幼兽常会看错，请以你知道的为准。",
+      guessDone: (sp, br) => `AI 已自动填写：${sp}${br ? `・${br}` : ""}`,
+      guessNone: "AI 无法辨识，请自行选择。",
+      guessFail: "辨识失败，请自行选择。",
       conf: { high: "高", medium: "中", low: "低" },
       save: "储存修改", issue: "贴进手帐", cancel: "取消",
     },
@@ -872,7 +873,7 @@ const STR = {
     form: {
       newLabel: "NEW", editLabel: "EDIT",
       photo: "Photo", takePhoto: "Take photo", fromGallery: "Choose from library", removePhoto: "Remove photo",
-      photoHint: "On a phone, \"Take photo\" opens the camera. On a computer it opens the file picker. Photos up to 8 MB.",
+      photoHint: "Photos up to 8 MB.",
       name: "Name", namePh: "Mochi",
       species: "Species", dog: "Dog", cat: "Cat",
       breed: "Breed", pick: "Select", breedOtherPh: "Enter breed",
@@ -892,10 +893,9 @@ const STR = {
       guess: "Let AI identify the species and breed",
       guessAgain: "Identify again",
       guessing: "AI is looking…",
-      guessDone: (sp, br, conf) => `AI thinks this is a ${sp}${br ? ` (${br})` : ""}, ${conf} confidence. Selected for you; change it if it's wrong.`,
-      guessNone: "AI couldn't tell whether this is a dog or a cat. Please choose.",
+      guessDone: (sp, br) => `Filled in by AI: ${sp}${br ? ` · ${br}` : ""}`,
+      guessNone: "AI couldn't identify it. Please choose.",
       guessFail: "Couldn't recognise the photo. Please choose.",
-      guessHint: "Runs automatically after you pick a photo and pre-selects. Mixed breeds and young animals are often misjudged; go with what you know.",
       conf: { high: "high", medium: "medium", low: "low" },
       save: "Save changes", issue: "Add to journal", cancel: "Cancel",
     },
@@ -2188,7 +2188,7 @@ function PetForm({ pet, onSave, onCancel }) {
       else {
         setBreedOther(false);
         setF((s) => ({ ...s, species: g.species, breed: g.breed || "" }));
-        setGuessMsg(F.guessDone(L.speciesName[g.species], g.breed ? breedLabel(g.species, g.breed, lang) : "", F.conf[g.confidence]));
+        setGuessMsg(F.guessDone(L.speciesName[g.species], g.breed ? breedLabel(g.species, g.breed, lang) : ""));
       }
     } catch { setGuessMsg(F.guessFail); }
     setGuessBusy(false);
@@ -2231,7 +2231,6 @@ function PetForm({ pet, onSave, onCancel }) {
             {f.photo && (
               <div style={{ marginTop: 12 }}>
                 <button className="pp-btn-ghost" onClick={() => guessFromPhoto()} disabled={guessBusy}>{guessBusy ? <><span className="pp-spin" style={{ borderColor: "rgba(59,48,36,.2)", borderTopColor: "var(--ink)" }} />{F.guessing}</> : guessMsg ? F.guessAgain : F.guess}</button>
-                <div className="pp-hint">{F.guessHint}</div>
                 {guessMsg && <div className="pp-msg soft" style={{ color: "#3B3024" }}>{guessMsg}</div>}
               </div>
             )}
