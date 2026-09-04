@@ -93,6 +93,7 @@ import { loadPets, upsertPet, deletePet, loadLang, saveLang } from "./lib/db";
 
    v3.10：必填改为名字、物种、品种、性别、生日、体重、结扎、城市；所有栏位标题粗体；生日精度到月份（存 YYYY-MM-01）。
 
+   v4.0.4：玩伴页顶部的大照片只在等待结果时显示，结果出来（有最佳配对）后隐藏，避免与 ♥ 配对卡重复。
    v4.0.3：玩伴页顶部显示自己宠物的照片；最佳配对卡片以「我的照片 ♥ 对方照片」并排呈现。
    v4.0.2：配对理由篇幅加倍；拿掉「分数与理由由 AI 产生」说明；分数标签改为「AI 配对 x 分」。
    v4.0.1：修复 v4.0 误删的统计与商品检查程式（画面空白）。
@@ -2165,7 +2166,7 @@ function Playmates({ pet, allPets, onBack }) {
       <div className="paper pp-tier" style={{ marginTop: 18 }}>
         <span className="tape c" />
         <div className="pp-mate-head">
-          <Photo src={pet.photo} species={pet.species} breed={pet.breed} big />
+          {!(rows && rows.some((o) => o.isMatch)) && <Photo src={pet.photo} species={pet.species} breed={pet.breed} big />}
           <h2 className="pp-tier-h">{M.title(pet.name)}</h2>
         </div>
         <p className="pp-tier-d" style={{ margin: "12px 0 0" }}>{pet.city ? M.intro(city, L.speciesName[pet.species]) : M.noCity}</p>
