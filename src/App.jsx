@@ -93,6 +93,7 @@ import { loadPets, upsertPet, deletePet, loadLang, saveLang } from "./lib/db";
 
    v3.10：必填改为名字、物种、品种、性别、生日、体重、结扎、城市；所有栏位标题粗体；生日精度到月份（存 YYYY-MM-01）。
 
+   v4.0.3：玩伴页顶部显示自己宠物的照片；最佳配对卡片以「我的照片 ♥ 对方照片」并排呈现。
    v4.0.2：配对理由篇幅加倍；拿掉「分数与理由由 AI 产生」说明；分数标签改为「AI 配对 x 分」。
    v4.0.1：修复 v4.0 误删的统计与商品检查程式（画面空白）。
    v4.0：找玩伴改由 AI 依双方完整资料打分（0–100）、挑最佳配对、写 3 点精简理由；AI 失败时退回规则版。
@@ -335,6 +336,10 @@ img.pp-photo{display:block;}
 .pp-mate-badge{position:absolute;right:14px;top:-10px;background:var(--berry);color:#fff;font-family:var(--font-round);
   font-size:11px;font-weight:700;padding:5px 12px;border-radius:999px;box-shadow:0 2px 4px rgba(59,48,36,.2);letter-spacing:.04em;}
 .pp-mate-why{padding:0 16px 12px;}
+.pp-mate-head{display:flex;align-items:center;gap:16px;}
+.pp-mate-head .pp-tier-h{margin:0;}
+.pp-pair{display:flex;align-items:center;gap:6px;flex:0 0 auto;}
+.pp-heart{color:var(--berry);font-size:22px;line-height:1;}
 .pp-mate-score{position:absolute;right:14px;bottom:14px;font-family:var(--font-type);font-size:11px;letter-spacing:.06em;
   color:var(--ink);background:#fff;border:1px solid var(--rule);border-radius:999px;padding:4px 10px;}
 .pp-mate.match .pp-mate-score{position:static;display:inline-block;margin:0 16px 10px;font-size:13px;font-weight:700;border-color:var(--tape-c);}
@@ -2159,8 +2164,11 @@ function Playmates({ pet, allPets, onBack }) {
 
       <div className="paper pp-tier" style={{ marginTop: 18 }}>
         <span className="tape c" />
-        <h2 className="pp-tier-h">{M.title(pet.name)}</h2>
-        <p className="pp-tier-d" style={{ marginBottom: 0 }}>{pet.city ? M.intro(city, L.speciesName[pet.species]) : M.noCity}</p>
+        <div className="pp-mate-head">
+          <Photo src={pet.photo} species={pet.species} breed={pet.breed} big />
+          <h2 className="pp-tier-h">{M.title(pet.name)}</h2>
+        </div>
+        <p className="pp-tier-d" style={{ margin: "12px 0 0" }}>{pet.city ? M.intro(city, L.speciesName[pet.species]) : M.noCity}</p>
         {pet.species === "cat" && pet.city && <div className="pp-src">{M.catNote}</div>}
       </div>
 
@@ -2175,7 +2183,15 @@ function Playmates({ pet, allPets, onBack }) {
             {o.isMatch && <div className="pp-mate-badge">{M.best}</div>}
             {o.aiScored && <div className="pp-mate-score">{M.score(o.score)}</div>}
             <div className="pp-card-in">
-              <Photo src={o.photo} species={o.species} breed={o.breed} />
+              {o.isMatch ? (
+                <div className="pp-pair">
+                  <Photo src={pet.photo} species={pet.species} breed={pet.breed} />
+                  <span className="pp-heart" aria-hidden="true">♥</span>
+                  <Photo src={o.photo} species={o.species} breed={o.breed} />
+                </div>
+              ) : (
+                <Photo src={o.photo} species={o.species} breed={o.breed} />
+              )}
               <div style={{ minWidth: 0 }}>
                 <h2 className="pp-name">{o.name}</h2>
                 <div className="pp-meta">
