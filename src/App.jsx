@@ -93,6 +93,7 @@ import { loadPets, upsertPet, deletePet, loadLang, saveLang } from "./lib/db";
 
    v3.10：必填改为名字、物种、品种、性别、生日、体重、结扎、城市；所有栏位标题粗体；生日精度到月份（存 YYYY-MM-01）。
 
+   v4.0.1：修复 v4.0 误删的统计与商品检查程式（画面空白）。
    v4.0：找玩伴改由 AI 依双方完整资料打分（0–100）、挑最佳配对、写 3 点精简理由；AI 失败时退回规则版。
       Netlify 版走 Edge Function match-playmates，Email 仍只随最佳配对回传。
 
@@ -1319,6 +1320,99 @@ async function loadPlaymates(pet) {
     if (error) throw error;
     return (data || []).map((r) => mapRow(r, false));
   }
+}
+
+/* 全站统计：问资料库的 journal_stats()（不重复的 owner_id 数、宠物笔数），见 migrate-v5-stats.sql */
+async function loadStats() {
+  const { data, error } = await supabase.rpc("journal_stats");
+  if (error) throw error;
+  const row = Array.isArray(data) ? data[0] : data;
+  return { owners: Number(row?.owners || 0), pets: Number(row?.pets || 0) };
+}
+
+/* ---- 拍商品外观 → AI 辨识 + 判断 ---- */
+const FOOD_SYSTEM = `You are the product-check assistant inside a pet journal app. The photo shows the outside of a pet food product (dog or cat food, treats, or supplements). Identify the exact product and judge whether it suits the specific pet described. Use web search only when it is enabled and needed to confirm the brand, product name and the official ingredient list. Be honest about uncertainty and never invent ingredients.`;
+
+function buildFoodPrompt(pet, L, product, webSearch) {
+  const a = ageParts(pet.birthday);
+  const profile = {
+    species: pet.species,
+    breed: breedLabel(pet.species, pet.breed, "en") || "unknown",
+    age_months: a ? a.y * 12 + a.m : null,
+    life_stage: lifeStage(pet),
+    weight_kg: Number(pet.weightKg) || null,
+    neutered: !!pet.neutered,
+    known_allergies: (pet.allergies || []).map((k) => (ALLERGENS[k] ? ALLERGENS[k].label[1] : k)),
+  };
+  const source = product
+    ? `Product information entered by the owner (no photo): ${JSON.stringify({ name: product.name || null, ingredients: product.ingredients || null, life_stage_on_pack: product.stage || "unknown" })}
+Treat the owner's ingredient list as authoritative when given.`
+    : `The photo shows the outside of the product. Identify it: brand, product name, variant (e.g. "Adult Lamb & Rice"). Read the ingredient list and life stage from the label if visible; otherwise rely on what you already know about this product.`;
+  const searchRule = webSearch
+    ? "You may use web search, at most twice, only if you cannot determine the product's ingredients or life stage otherwise."
+    : "Do not use any tools. If you cannot determine the ingredients from the photo or your own knowledge, answer \"unsure\" rather than guessing.";
+  return `Pet profile: ${JSON.stringify(profile)}
+
+${source}
+${searchRule}
+
+Decide suitability for THIS pet, considering everything you know (allergies, species, life stage, neuter status, weight, and general nutritional fit): "bad" if any ingredient matches one of the pet's known allergies, or the product is made for a clearly different species or life stage; "ok" if you have the ingredients and none of those problems apply; "unsure" if you could not identify the product or its ingredients.
+
+Output exactly ONE fenced json block in this shape and nothing else, no explanation before or after:
+\`\`\`json
+{"product":{"name":"","brand":"","ingredients":["main ingredients, at most 15"],"stage":"young|adult|senior|all|unknown","confidence":"high|medium|low"},"verdict":"ok|bad|unsure","reasons":{"zh":"2-3 short sentences in Simplified Chinese addressed to the owner, naming the ingredient or stage behind the verdict and one practical note","en":"the same 2-3 sentences in English"},"sources":["https://..."]}
+\`\`\``;
+}
+
+/* 从 AI 的回覆里把最后一段 JSON 挖出来 */
+function extractJson(text) {
+  const fenced = [...text.matchAll(/```json\s*([\s\S]*?)```/g)];
+  if (fenced.length) return JSON.parse(fenced[fenced.length - 1][1].trim());
+  const i = text.indexOf("{"), j = text.lastIndexOf("}");
+  if (i >= 0 && j > i) return JSON.parse(text.slice(i, j + 1));
+  throw new Error("no-json");
+}
+
+/* 共用：把 AI 回覆整理成 app 用的格式 */
+function normalizeFoodResult(j) {
+  const p = j.product || {};
+  const ingredients = Array.isArray(p.ingredients) ? p.ingredients.join(", ") : String(p.ingredients || "");
+  const stage = ["young", "adult", "senior", "all"].includes(p.stage) ? p.stage : inferStage(`${p.name || ""} ${ingredients}`);
+  const r = j.reasons && typeof j.reasons === "object" ? j.reasons : { zh: String(j.reasons || ""), en: String(j.reasons || "") };
+  return {
+    name: [p.brand, p.name].filter(Boolean).join(" "),
+    ingredients, stage,
+    verdict: ["ok", "bad", "unsure"].includes(j.verdict) ? j.verdict : "unsure",
+    reasons: { zh: String(r.zh || r.en || ""), en: String(r.en || r.zh || "") },
+    confidence: ["high", "medium", "low"].includes(p.confidence) ? p.confidence : "low",
+    sources: Array.isArray(j.sources) ? j.sources.filter((u) => /^https?:\/\//.test(u)).slice(0, 3) : [],
+  };
+}
+/* 拍商品外观：照片 → AI */
+async function identifyFoodWithAI(dataUrl, pet, L, webSearch = false) {
+  const b64 = dataUrl.split(",")[1];
+  return normalizeFoodResult(extractJson(await foodCheckRequest(b64, buildFoodPrompt(pet, L, null, webSearch), FOOD_SYSTEM, { webSearch })));
+}
+/* 条码或手动输入：文字 → AI */
+async function judgeFoodWithAI(product, pet, L, webSearch = false) {
+  return normalizeFoodResult(extractJson(await foodCheckRequest(null, buildFoodPrompt(pet, L, product, webSearch), FOOD_SYSTEM, { webSearch })));
+}
+
+/* Netlify 版：交给 Supabase Edge Function「check-food」；b64 为 null 时只送文字；预设不上网，opts.webSearch 才开。
+   见 supabase/functions/check-food/index.ts */
+async function foodCheckRequest(b64, prompt, system, opts = {}) {
+  const { data, error } = await supabase.functions.invoke("check-food", { body: {
+    image: b64 || null, prompt, system, web_search: !!opts.webSearch, max_searches: opts.maxSearches || 2,
+    max_tokens: opts.maxTokens || (opts.webSearch ? 900 : 600),
+  } });
+  if (error) {
+    /* supabase.functions.invoke 把后端的错误内容藏在 context 里，尽量挖出来给画面看 */
+    let detail = error.message || String(error);
+    try { const body = await error.context?.json?.(); if (body?.error) detail = body.error; } catch { /* 忽略 */ }
+    throw new Error(detail);
+  }
+  if (!data || typeof data.text !== "string") throw new Error(data?.error || "no-text");
+  return data.text;
 }
 
 /* 检查商品：只看过敏原与年龄段 */
