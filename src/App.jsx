@@ -93,6 +93,7 @@ import { loadPets, upsertPet, deletePet, loadLang, saveLang } from "./lib/db";
 
    v3.10：必填改为名字、物种、品种、性别、生日、体重、结扎、城市；所有栏位标题粗体；生日精度到月份（存 YYYY-MM-01）。
 
+   v4.0.6：首页「＋」按钮回到右侧，往上抬到 Netlify 标签上方（避开 iPhone 底部手势区）。
    v4.0.5：玩伴页等待 AI 时显示转圈；首页新增按钮移到左下角（避开 Netlify 标签）。
    v4.0.4：玩伴页顶部的大照片只在等待结果时显示，结果出来（有最佳配对）后隐藏，避免与 ♥ 配对卡重复。
    v4.0.3：玩伴页顶部显示自己宠物的照片；最佳配对卡片以「我的照片 ♥ 对方照片」并排呈现。
@@ -183,7 +184,7 @@ const CSS = `
 .pp-alert b{font-weight:700;}
 .pp-alert.warn{background:#F4DADF;}
 
-.pp-body{padding:20px 16px 110px;}
+.pp-body{padding:20px 16px 170px;}
 .pp-stats{text-align:center;font-family:var(--font-type);font-size:11px;letter-spacing:.1em;color:var(--ink-soft);padding:14px 16px 0;line-height:1.9;}
 
 /* ---- 相簿卡片 ---- */
@@ -241,7 +242,7 @@ img.pp-photo{display:block;}
   padding:13px 22px;border-radius:10px;font-size:14px;width:100%;
 }
 .pp-fab{
-  position:fixed;left:18px;bottom:24px;
+  position:fixed;right:18px;bottom:calc(84px + env(safe-area-inset-bottom,0px));
   width:58px;height:58px;border-radius:50%;
   background:#fff;color:var(--ink);border:none;
   font-size:28px;line-height:1;font-family:var(--font-round);
