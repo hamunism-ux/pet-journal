@@ -74,6 +74,8 @@ import { loadPets, upsertPet, deletePet, loadLang, saveLang } from "./lib/db";
 
    v3.7.1：有 AI 判断时不再显示规则比对；AI 综合判断区块改粗框醒目样式。
 
+   v3.8：AI 判断降低费用：预设不上网、只回 JSON、输出上限 700、照片缩到 1000px；AI 不确定时才提供「上网查证」按钮。
+
    资料存放：Supabase（见 src/lib/db.js、supabase/schema.sql）；语言偏好存 localStorage
 ------------------------------------------------------------------ */
 
@@ -552,7 +554,7 @@ const STR = {
       takeFront: "拍商品",
       pickFront: "从相簿选择",
       identifying: "AI 处理中…",
-      waitHint: "辨识商品、查成分、综合判断，约 10–30 秒。",
+      waitHint: "辨识商品并综合判断，约 5–15 秒。",
       photoFail: "辨识失败。请换一张更清楚的照片，或改用下面的方式。",
       aiTitle: "AI 综合判断",
       aiVerdict: { ok: "合适", bad: "不合适", unsure: "不确定" },
@@ -561,8 +563,11 @@ const STR = {
       aiSources: "参考来源",
       judgeBtn: "让 AI 综合判断这款商品",
       judging: "AI 判断中…",
-      judgeHint: "参考你提供的名称、成分与年龄段，需要时上网确认。约 10–30 秒。",
+      judgeHint: "参考你提供的名称、成分与年龄段。约 5–15 秒。",
       judgeFail: "AI 判断失败，请稍后再试。",
+      verifyBtn: "让 AI 上网查证",
+      verifying: "查证中…",
+      verifyHint: "AI 不太确定时才需要；会多花一点时间与费用。",
       aiNote: "AI 判断可能有误，有疑虑请问兽医。",
       tier1: "② 输入条码",
       tier1d: "输入包装上的条码数字（通常 13 码），查询 Open Pet Food Facts。",
@@ -797,7 +802,7 @@ const STR = {
       takeFront: "Photograph product",
       pickFront: "Choose from library",
       identifying: "AI is working…",
-      waitHint: "Identifying the product, finding ingredients, judging. About 10–30 seconds.",
+      waitHint: "Identifying the product and judging. About 5–15 seconds.",
       photoFail: "Couldn't identify it. Try a clearer photo, or use one of the options below.",
       aiTitle: "AI verdict",
       aiVerdict: { ok: "Suitable", bad: "Not suitable", unsure: "Unsure" },
@@ -806,8 +811,11 @@ const STR = {
       aiSources: "Sources",
       judgeBtn: "Let AI judge this product",
       judging: "AI is judging…",
-      judgeHint: "Uses the name, ingredients and life stage you provided, checking online if needed. About 10–30 seconds.",
+      judgeHint: "Uses the name, ingredients and life stage you provided. About 5–15 seconds.",
       judgeFail: "AI couldn't judge it. Please try again later.",
+      verifyBtn: "Let AI verify online",
+      verifying: "Verifying…",
+      verifyHint: "Only needed when AI isn't sure; takes a little longer and costs a bit more.",
       aiNote: "AI can be wrong; ask your vet if in doubt.",
       tier1: "② Enter barcode",
       tier1d: "Type the barcode number on the pack (usually 13 digits) to look it up in Open Pet Food Facts.",
@@ -1248,7 +1256,7 @@ async function loadStats() {
 /* ---- 拍商品外观 → AI 辨识 + 上网查 + 判断 ---- */
 const FOOD_SYSTEM = `You are the product-check assistant inside a pet journal app. The photo shows the outside of a pet food product (dog or cat food, treats, or supplements). Identify the exact product and judge whether it suits the specific pet described. Use web search to confirm the brand, product name and the official ingredient list when they are not fully readable in the photo. Be honest about uncertainty and never invent ingredients.`;
 
-function buildFoodPrompt(pet, L, product) {
+function buildFoodPrompt(pet, L, product, webSearch) {
   const a = ageParts(pet.birthday);
   const profile = {
     species: pet.species,
@@ -1261,15 +1269,19 @@ function buildFoodPrompt(pet, L, product) {
   };
   const source = product
     ? `Product information entered by the owner (no photo): ${JSON.stringify({ name: product.name || null, ingredients: product.ingredients || null, life_stage_on_pack: product.stage || "unknown" })}
-Treat the owner's ingredient list as authoritative when given. Use web search only to confirm the product and to fill gaps (for example, to find the official ingredient list if none was entered).`
-    : `The photo shows the outside of the product. Identify it: brand, product name, variant (e.g. "Adult Lamb & Rice"). Read the ingredient list and life stage from the label if visible; otherwise search the web for the official product page.`;
+Treat the owner's ingredient list as authoritative when given.`
+    : `The photo shows the outside of the product. Identify it: brand, product name, variant (e.g. "Adult Lamb & Rice"). Read the ingredient list and life stage from the label if visible; otherwise rely on what you already know about this product.`;
+  const searchRule = webSearch
+    ? "You may use web search, at most twice, only if you cannot determine the product's ingredients or life stage otherwise."
+    : "Do not use any tools. If you cannot determine the ingredients from the photo or your own knowledge, answer \"unsure\" rather than guessing.";
   return `Pet profile: ${JSON.stringify(profile)}
 
 ${source}
+${searchRule}
 
 Decide suitability for THIS pet, considering everything you know (allergies, species, life stage, neuter status, weight, and general nutritional fit): "bad" if any ingredient matches one of the pet's known allergies, or the product is made for a clearly different species or life stage; "ok" if you have the ingredients and none of those problems apply; "unsure" if you could not identify the product or its ingredients.
 
-Explain briefly, then finish with exactly ONE fenced json block in this shape and nothing after it:
+Output exactly ONE fenced json block in this shape and nothing else, no explanation before or after:
 \`\`\`json
 {"product":{"name":"","brand":"","ingredients":["..."],"stage":"young|adult|senior|all|unknown","confidence":"high|medium|low"},"verdict":"ok|bad|unsure","reasons":{"zh":"2-3 short sentences in Simplified Chinese addressed to the owner, naming the specific ingredient or stage behind the verdict","en":"the same 2-3 sentences in English"},"sources":["https://..."]}
 \`\`\``;
@@ -1300,19 +1312,21 @@ function normalizeFoodResult(j) {
   };
 }
 /* 拍商品外观：照片 → AI */
-async function identifyFoodWithAI(dataUrl, pet, L) {
+async function identifyFoodWithAI(dataUrl, pet, L, webSearch = false) {
   const b64 = dataUrl.split(",")[1];
-  return normalizeFoodResult(extractJson(await foodCheckRequest(b64, buildFoodPrompt(pet, L, null), FOOD_SYSTEM)));
+  return normalizeFoodResult(extractJson(await foodCheckRequest(b64, buildFoodPrompt(pet, L, null, webSearch), FOOD_SYSTEM, { webSearch })));
 }
 /* 条码或手动输入：文字 → AI */
-async function judgeFoodWithAI(product, pet, L) {
-  return normalizeFoodResult(extractJson(await foodCheckRequest(null, buildFoodPrompt(pet, L, product), FOOD_SYSTEM)));
+async function judgeFoodWithAI(product, pet, L, webSearch = false) {
+  return normalizeFoodResult(extractJson(await foodCheckRequest(null, buildFoodPrompt(pet, L, product, webSearch), FOOD_SYSTEM, { webSearch })));
 }
 
-/* Netlify 版：交给 Supabase Edge Function「check-food」（会自动带登入 token；上网查询在那边做）。
-   b64 为 null 时只送文字。见 supabase/functions/check-food/index.ts */
-async function foodCheckRequest(b64, prompt, system) {
-  const { data, error } = await supabase.functions.invoke("check-food", { body: { image: b64 || null, prompt, system, max_tokens: 2000, web_search: true } });
+/* Netlify 版：交给 Supabase Edge Function「check-food」；b64 为 null 时只送文字；预设不上网，opts.webSearch 才开。
+   见 supabase/functions/check-food/index.ts */
+async function foodCheckRequest(b64, prompt, system, opts = {}) {
+  const { data, error } = await supabase.functions.invoke("check-food", { body: {
+    image: b64 || null, prompt, system, max_tokens: opts.maxTokens || 700, web_search: !!opts.webSearch, max_searches: opts.maxSearches || 2,
+  } });
   if (error) throw error;
   if (!data || typeof data.text !== "string") throw new Error(data?.error || "no-text");
   return data.text;
@@ -1808,12 +1822,25 @@ function CheckProduct({ pet, onBack }) {
   const ingText = prod ? (prod.source === "manual" ? combineIngredients(picked, prod.ingredients) : prod.ingredients) : "";
   const result = prod && ingText.trim() ? checkProduct(pet, { ...prod, ingredients: ingText }) : null;
   const editProd = (patch) => { setProd({ ...prod, ...patch }); setAi(null); }; // 改了资料，旧的 AI 判断就不算数
+  const lastFoodRef = useRef(null); // 记住上一次送给 AI 的东西，「上网查证」时重跑一次
+  async function onVerify() {
+    const last = lastFoodRef.current;
+    if (!last || busy) return;
+    setBusy("verify"); setMsg("");
+    try {
+      const r = last.kind === "photo" ? await identifyFoodWithAI(last.dataUrl, pet, L, true) : await judgeFoodWithAI(last.product, pet, L, true);
+      if (last.kind === "photo") setProd({ name: r.name, ingredients: r.ingredients, stage: r.stage, source: "photo" });
+      setAi({ verdict: r.verdict, reasons: r.reasons, confidence: r.confidence, sources: r.sources, searched: true });
+    } catch { setMsg(C.judgeFail); }
+    setBusy("");
+  }
   async function onJudge() {
     if (!prod || busy) return;
     const product = { name: prod.name, ingredients: ingText, stage: prod.stage };
     if (!product.name.trim() && !product.ingredients.trim()) return;
     setBusy("judge"); setMsg(""); setAi(null);
     try {
+      lastFoodRef.current = { kind: "text", product };
       const r = await judgeFoodWithAI(product, pet, L);
       const filled = { ...prod };
       if (!prod.name.trim() && r.name) filled.name = r.name;
@@ -1828,7 +1855,8 @@ function CheckProduct({ pet, onBack }) {
     const file = e.target.files?.[0]; e.target.value = ""; if (!file) return;
     setBusy("food"); setMsg(""); setAi(null);
     try {
-      const dataUrl = await readImage(file, 1200);
+      const dataUrl = await readImage(file, 1000);
+      lastFoodRef.current = { kind: "photo", dataUrl };
       const r = await identifyFoodWithAI(dataUrl, pet, L);
       setProd({ name: r.name, ingredients: r.ingredients, stage: r.stage, source: "photo" });
       setAi({ verdict: r.verdict, reasons: r.reasons, confidence: r.confidence, sources: r.sources });
@@ -1941,6 +1969,13 @@ function CheckProduct({ pet, onBack }) {
               </div>
             )}
           </div>
+          {!ai.searched && (ai.verdict === "unsure" || ai.confidence === "low") && (
+            <div style={{ padding: "4px 16px 12px" }}>
+              <button className="pp-btn-ghost" onClick={onVerify} disabled={!!busy}>{busy === "verify" ? <><span className="pp-spin" style={{ borderColor: "rgba(59,48,36,.2)", borderTopColor: "var(--ink)" }} />{C.verifying}</> : C.verifyBtn}</button>
+              <div className="pp-hint">{C.verifyHint}</div>
+              {msg === C.judgeFail && <div className="pp-msg">{msg}</div>}
+            </div>
+          )}
           <div className="pp-note">{C.aiNote}</div>
         </div>
       )}
