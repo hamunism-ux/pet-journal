@@ -5,61 +5,63 @@ import { AUTH_MODE } from "./config.js";
 import { loadPets, upsertPet, deletePet, loadLang, saveLang } from "./lib/db";
 
 /* ------------------------------------------------------------------
-   寵物護照 v2 — 手帳風格版（新 artifact，舊版不受影響）
+   宠物护照 v2 — 手帐风格版（新 artifact，旧版不受影响）
 
    新增：
-   1. 檢查商品：條碼查 Open Pet Food Facts → 拍成分表由 AI 讀 → 手動輸入
-      只判斷兩件事：有沒有含過敏原、年齡段對不對
-   2. 玩伴建議：依物種／月齡／體型／結紮／活動量給文字建議（附參考來源）
-   3. 視覺改為日系手帳／寵物相簿風格
+   1. 检查商品：条码查 Open Pet Food Facts → 拍成分表由 AI 读 → 手动输入
+      只判断两件事：有没有含过敏原、年龄段对不对
+   2. 玩伴建议：依物种／月龄／体型／结扎／活动量给文字建议（附参考来源）
+   3. 视觉改为日系手帐／宠物相簿风格
 
-   v2.2：拍條碼改為三層辨識，iPhone 也能用
-      ① 瀏覽器內建 BarcodeDetector（Chrome / Android）
-      ② ZXing 函式庫（所有瀏覽器含 iOS Safari；artifact 從 CDN 載入，Netlify 版改用 npm 套件）
-      ③ AI 讀條碼下方印刷的數字（會做校驗碼檢查，並提示使用者核對）
-      都失敗才請使用者手動輸入
+   v2.2：拍条码改为三层辨识，iPhone 也能用
+      ① 浏览器内建 BarcodeDetector（Chrome / Android）
+      ② ZXing 函式库（所有浏览器含 iOS Safari；artifact 从 CDN 载入，Netlify 版改用 npm 套件）
+      ③ AI 读条码下方印刷的数字（会做校验码检查，并提示使用者核对）
+      都失败才请使用者手动输入
 
-   v2.3：表單裡有照片時，可以讓 AI 猜物種與品種（限定回傳 BREEDS 裡的代碼），
-      自動選好下拉選單並標示把握程度，使用者可直接改
+   v2.3：表单里有照片时，可以让 AI 猜物种与品种（限定回传 BREEDS 里的代码），
+      自动选好下拉选单并标示把握程度，使用者可直接改
 
-   v3.0（雲端版）：資料改存 Supabase，需要 Email 登入。
-      和 artifact 版的差別只有四處：import、visionRequest、loadZXing、主元件 PetJournal 與 Login。
-      其他畫面與邏輯完全相同。
+   v3.0（云端版）：资料改存 Supabase，需要 Email 登入。
+      和 artifact 版的差别只有四处：import、visionRequest、loadZXing、主元件 PetJournal 与 Login。
+      其他画面与逻辑完全相同。
 
-   v2.4：移除晶片號碼與疫苗到期提醒（欄位、首頁便利貼、詳細頁貼紙）。
-      多筆健康紀錄（含疫苗）之後以獨立功能加回。
+   v2.4：移除晶片号码与疫苗到期提醒（栏位、首页便利贴、详细页贴纸）。
+      多笔健康纪录（含疫苗）之后以独立功能加回。
 
-   v2.5：體重改成拉桿（依物種給範圍）＋ −／＋ 微調 0.1 公斤，可清除。
+   v2.5：体重改成拉杆（依物种给范围）＋ −／＋ 微调 0.1 公斤，可清除。
 
-   v2.5.1：首頁標題橫幅擺正（順便修掉 .pp-label 與表單標籤同名互相覆蓋的問題）。
+   v2.5.1：首页标题横幅摆正（顺便修掉 .pp-label 与表单标签同名互相覆盖的问题）。
 
-   v2.6：商品檢查的手動輸入改成「常見成分點選（多選）＋自由文字補充」，兩者合併後比對。
+   v2.6：商品检查的手动输入改成「常见成分点选（多选）＋自由文字补充」，两者合并后比对。
 
-   v2.7：新增「所在城市」欄位（下拉選單，存代碼，顯示時翻譯；資料庫加 city 欄）。
+   v2.7：新增「所在城市」栏位（下拉选单，存代码，显示时翻译；资料库加 city 栏）。
 
-   v2.7.1：所有方框、卡片、貼紙、紙膠帶全部擺正，不再有任何旋轉。
+   v2.7.1：所有方框、卡片、贴纸、纸胶带全部摆正，不再有任何旋转。
 
-   v2.8：表單有照片時多一顆「移除照片」，清掉照片與辨識結果，回到剪影狀態。
+   v2.8：表单有照片时多一颗「移除照片」，清掉照片与辨识结果，回到剪影状态。
 
-   v2.9：推薦商品只顯示最合適的 1 款；「玩伴建議」改為「養育建議」（運動／美容／健康／環境／社交），
-      依物種、月齡、體型、品種類型、結紮、過敏原自動產生。
+   v2.9：推荐商品只显示最合适的 1 款；「玩伴建议」改为「养育建议」（运动／美容／健康／环境／社交），
+      依物种、月龄、体型、品种类型、结扎、过敏原自动产生。
 
-   v2.10：「檢查一款商品」按鈕改醒目樣式；商品檢查移除「拍成分表由 AI 讀」那一層，剩條碼查詢與手動輸入。
+   v2.10：「检查一款商品」按钮改醒目样式；商品检查移除「拍成分表由 AI 读」那一层，剩条码查询与手动输入。
 
-   v2.11：檢查按鈕改回深棕色（保留較大尺寸）；寵物檔案新增「主人 Email」（選填，資料庫加 owner_email 欄）。
+   v2.11：检查按钮改回深棕色（保留较大尺寸）；宠物档案新增「主人 Email」（选填，资料库加 owner_email 栏）。
 
-   v2.11.1：城市選項縮減為新加坡、楓丹白露、阿布達比、其他。
+   v2.11.1：城市选项缩减为新加坡、枫丹白露、阿布达比、其他。
 
-   v3.1：新增「尋找附近的玩伴」：同城同物種的其他寵物清單，依年齡階段／體型／結紮挑最佳配對並附理由，
-      只有最佳配對顯示主人 Email。Netlify 版透過資料庫函式 find_playmates()（見 supabase/migrate-v4-playmates.sql）。
+   v3.1：新增「寻找附近的玩伴」：同城同物种的其他宠物清单，依年龄阶段／体型／结扎挑最佳配对并附理由，
+      只有最佳配对显示主人 Email。Netlify 版透过资料库函式 find_playmates()（见 supabase/migrate-v4-playmates.sql）。
 
-   v3.1.1：城市名稱前加國旗 emoji（新加坡 🇸🇬、楓丹白露 🇫🇷、阿布達比 🇦🇪、其他 🌍）。
+   v3.1.1：城市名称前加国旗 emoji（新加坡 🇸🇬、枫丹白露 🇫🇷、阿布达比 🇦🇪、其他 🌍）。
 
-   v3.2：推薦商品理由與養育建議全部改短、改白話；免責聲明也縮短。
+   v3.2：推荐商品理由与养育建议全部改短、改白话；免责声明也缩短。
 
-   v3.3：移除首頁帳號狀態列與 SINCE 日期列；首頁底部顯示全站統計（主人數＝不重複 owner_id、寵物數＝筆數）。
+   v3.3：移除首页帐号状态列与 SINCE 日期列；首页底部显示全站统计（主人数＝不重复 owner_id、宠物数＝笔数）。
 
-   資料存放：Supabase（見 src/lib/db.js、supabase/schema.sql）；語言偏好存 localStorage
+   v3.4：次要文字颜色加深（对比度）；中文介面全部改为简体中文（过敏原比对词保留繁简两套）。
+
+   资料存放：Supabase（见 src/lib/db.js、supabase/schema.sql）；语言偏好存 localStorage
 ------------------------------------------------------------------ */
 
 const CSS = `
@@ -67,17 +69,17 @@ const CSS = `
   --paper:#D8C6A2;
   --card:#FBF6EA;
   --ink:#3B3024;
-  --ink-soft:#7B6C57;
+  --ink-soft:#5A4B38;
   --rule:#E6DAC2;
   --tape-a:#8DB7A6;
   --tape-b:#E4AFA7;
   --tape-c:#E5C15E;
   --berry:#9E3D57;
   --ok:#5F8A5B;
-  --font-round:ui-rounded,"Hiragino Maru Gothic ProN","Yu Gothic UI","Arial Rounded MT Bold","Noto Sans TC",sans-serif;
+  --font-round:ui-rounded,"Hiragino Maru Gothic ProN","Yu Gothic UI","Arial Rounded MT Bold","Noto Sans SC",sans-serif;
   --font-type:"Courier New",Courier,monospace;
 
-  font-family:-apple-system,BlinkMacSystemFont,"PingFang TC","Noto Sans TC","Microsoft JhengHei",sans-serif;
+  font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Noto Sans SC","Microsoft YaHei",sans-serif;
   color:var(--ink);
   background-color:var(--paper);
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 .07 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
@@ -88,7 +90,7 @@ const CSS = `
 .pp button{font-family:inherit;cursor:pointer;}
 .pp :focus-visible{outline:2px solid var(--berry);outline-offset:2px;}
 
-/* ---- 紙膠帶 ---- */
+/* ---- 纸胶带 ---- */
 .tape{
   position:absolute;top:-9px;left:18px;width:72px;height:20px;
   background-color:var(--tape-a);opacity:.92;
@@ -98,13 +100,13 @@ const CSS = `
 .tape.b{background-color:var(--tape-b);left:auto;right:22px;}
 .tape.c{background-color:var(--tape-c);}
 
-/* ---- 紙卡 ---- */
+/* ---- 纸卡 ---- */
 .paper{
   position:relative;background:var(--card);border-radius:3px;
   box-shadow:0 2px 6px rgba(59,48,36,.16);
 }
 
-/* ---- 頁首：牛皮筆記本封面 + 貼紙標籤 ---- */
+/* ---- 页首：牛皮笔记本封面 + 贴纸标签 ---- */
 .pp-top{padding:30px 20px 22px;position:relative;}
 .pp-banner{
   display:inline-block;background:var(--card);padding:12px 18px 10px;
@@ -121,7 +123,7 @@ const CSS = `
   font-family:var(--font-type);letter-spacing:.08em;text-decoration:underline;text-underline-offset:3px;}
 .pp-notice{padding:60px 24px;text-align:center;color:var(--ink-soft);font-size:14px;line-height:1.9;}
 
-/* ---- 語言切換：貼紙 ---- */
+/* ---- 语言切换：贴纸 ---- */
 .pp-lang{
   display:inline-flex;background:#fff;border-radius:999px;padding:2px;
   box-shadow:0 1px 3px rgba(59,48,36,.2);
@@ -132,7 +134,7 @@ const CSS = `
 }
 .pp-lang button[data-on="1"]{background:var(--ink);color:#FBF6EA;}
 
-/* ---- 便利貼提醒 ---- */
+/* ---- 便利贴提醒 ---- */
 .pp-alert{
   margin:16px 16px 0;background:#FCEFC3;padding:12px 14px;border-radius:2px;
   box-shadow:0 2px 4px rgba(59,48,36,.16);
@@ -157,7 +159,7 @@ const CSS = `
 .pp-photo{
   width:78px;height:96px;display:flex;align-items:center;justify-content:center;
   border:4px solid #fff;box-shadow:0 1px 4px rgba(59,48,36,.22);
-  background:#EFE7D6;object-fit:cover;color:#B9AB93;
+  background:#EFE7D6;object-fit:cover;color:#9C8D74;
 }
 .pp-photo.big{width:104px;height:128px;}
 .pp-photo svg{padding:6px;}
@@ -171,11 +173,11 @@ img.pp-photo{display:block;}
 .pp-name{font-family:var(--font-round);font-size:20px;font-weight:700;margin:4px 0 0;}
 .pp-meta{font-size:12.5px;color:var(--ink-soft);margin-top:6px;line-height:1.7;}
 
-/* ---- 空狀態 ---- */
+/* ---- 空状态 ---- */
 .pp-empty{text-align:center;padding:54px 24px;}
 .pp-empty p{color:var(--ink-soft);font-size:14px;line-height:1.9;margin:0 0 22px;}
 
-/* ---- 按鈕 ---- */
+/* ---- 按钮 ---- */
 .pp-btn{
   background:var(--ink);color:#FBF6EA;border:none;
   padding:14px 22px;border-radius:10px;font-size:15px;
@@ -207,14 +209,14 @@ img.pp-photo{display:block;}
   display:flex;align-items:center;justify-content:center;
 }
 
-/* ---- 導覽 ---- */
+/* ---- 导览 ---- */
 .pp-nav{display:flex;align-items:center;justify-content:space-between;padding:16px 16px 4px;}
 .pp-nav > button{background:none;border:none;color:var(--ink);font-size:14px;padding:6px 4px;font-family:var(--font-round);}
 .pp-nav > span{font-family:var(--font-type);font-size:11px;letter-spacing:.18em;color:var(--ink-soft);}
 .pp-nav-right{display:flex;align-items:center;gap:10px;}
 .pp-nav-right > button{background:none;border:none;color:var(--ink);font-size:14px;padding:6px 4px;font-family:var(--font-round);}
 
-/* ---- 詳細頁 ---- */
+/* ---- 详细页 ---- */
 .pp-page{margin:18px 16px 16px;}
 .pp-page-head{display:flex;gap:18px;padding:22px 16px 16px;}
 .pp-big-name{font-family:var(--font-round);font-size:26px;font-weight:700;margin:6px 0 0;}
@@ -245,7 +247,7 @@ img.pp-photo{display:block;}
   font-size:11.5px;line-height:1.75;color:var(--ink-soft);font-style:italic;
 }
 
-/* ---- 推薦商品 ---- */
+/* ---- 推荐商品 ---- */
 .pp-prod{padding:14px 16px;border-bottom:1px dotted var(--rule);}
 .pp-prod:last-of-type{border-bottom:none;}
 .pp-prod-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;}
@@ -272,10 +274,10 @@ img.pp-photo{display:block;}
 .pp-none{padding:12px 16px 14px;font-size:13px;color:var(--ink-soft);line-height:1.8;}
 
 
-/* ---- 體重拉桿 ---- */
+/* ---- 体重拉杆 ---- */
 .pp-wt{display:flex;align-items:center;gap:10px;margin-bottom:6px;}
 .pp-wt-val{font-family:var(--font-round);font-size:28px;font-weight:700;min-width:92px;line-height:1;}
-.pp-wt-val[data-empty="1"]{color:#B9AB93;}
+.pp-wt-val[data-empty="1"]{color:#9C8D74;}
 .pp-wt-val small{font-size:12px;color:var(--ink-soft);margin-left:5px;font-weight:400;}
 .pp-wt-btn{width:42px;height:42px;border-radius:50%;background:#fff;border:1px solid var(--rule);
   font-size:20px;line-height:1;color:var(--ink);box-shadow:0 1px 3px rgba(59,48,36,.14);flex:0 0 auto;}
@@ -290,7 +292,7 @@ img.pp-photo{display:block;}
 .pp-range-scale{display:flex;justify-content:space-between;font-family:var(--font-type);font-size:10px;
   color:var(--ink-soft);letter-spacing:.06em;margin-top:-2px;}
 
-/* ---- 玩伴清單 ---- */
+/* ---- 玩伴清单 ---- */
 .pp-mate{position:relative;background:var(--card);border-radius:3px;box-shadow:0 2px 6px rgba(59,48,36,.16);margin:0 16px 16px;}
 .pp-mate.match{background:#FFF6DA;box-shadow:0 0 0 3px var(--tape-c),0 4px 12px rgba(59,48,36,.22);}
 .pp-mate-badge{position:absolute;right:14px;top:-10px;background:var(--berry);color:#fff;font-family:var(--font-round);
@@ -300,7 +302,7 @@ img.pp-photo{display:block;}
   border:1px dashed var(--ink-soft);}
 .pp-mate-contact .k{font-size:11px;color:var(--ink-soft);font-family:var(--font-round);margin-bottom:4px;}
 
-/* ---- 表單 ---- */
+/* ---- 表单 ---- */
 .pp-form{padding:12px 16px 40px;}
 .pp-field{margin-bottom:18px;}
 .pp-label{display:block;font-size:12.5px;color:var(--ink-soft);margin-bottom:7px;font-family:var(--font-round);}
@@ -333,7 +335,7 @@ img.pp-photo{display:block;}
 .pp-actions{display:flex;flex-direction:column;gap:10px;margin-top:26px;}
 .pp-err{color:var(--berry);font-size:12.5px;margin-top:-8px;margin-bottom:14px;}
 
-/* ---- 檢查商品 ---- */
+/* ---- 检查商品 ---- */
 .pp-tier{margin:0 16px 18px;padding:16px 16px 14px;}
 .pp-tier-h{font-family:var(--font-round);font-size:15px;font-weight:700;margin:0 0 4px;}
 .pp-tier-d{font-size:12.5px;color:var(--ink-soft);line-height:1.7;margin:0 0 12px;}
@@ -362,236 +364,236 @@ img.pp-photo{display:block;}
 
 const STR = {
   zh: {
-    title: "寵物手帳",
+    title: "宠物手帐",
     sub: "PET PASSPORT",
-    loading: "翻開手帳中…",
+    loading: "翻开手帐中…",
     auth: {
-      title: "登入手帳",
-      intro: "輸入 Email，我們寄一個登入連結給你，點了就進來，不用密碼。換手機也只要再登入一次，資料都還在。",
+      title: "登入手帐",
+      intro: "输入 Email，我们寄一个登入连结给你，点了就进来，不用密码。换手机也只要再登入一次，资料都还在。",
       email: "Email",
-      send: "寄登入連結",
+      send: "寄登入连结",
       sending: "寄送中…",
-      sent: (e) => `已寄到 ${e}。請到信箱點連結（找不到請看垃圾郵件）。`,
-      err: "寄送失敗，請確認 Email 再試一次。",
-      privacy: "你的寵物資料只有你登入後看得到。",
+      sent: (e) => `已寄到 ${e}。请到信箱点连结（找不到请看垃圾邮件）。`,
+      err: "寄送失败，请确认 Email 再试一次。",
+      privacy: "你的宠物资料只有你登入后看得到。",
       logout: "登出",
-      notConfigured: "還沒填資料庫連線。請打開 src/config.js 貼上 Supabase 的 URL 和 anon key，再重新上傳。",
-      anonFail: "自動登入失敗。請到 Supabase 後台 Authentication → Sign In / Providers，打開「Allow anonymous sign-ins」。",
-      loadFail: "讀取資料失敗，請重新整理再試。",
+      notConfigured: "还没填资料库连线。请打开 src/config.js 贴上 Supabase 的 URL 和 anon key，再重新上传。",
+      anonFail: "自动登入失败。请到 Supabase 后台 Authentication → Sign In / Providers，打开「Allow anonymous sign-ins」。",
+      loadFail: "读取资料失败，请重新整理再试。",
     },
-    issued: (n) => `${n} 位家庭成員`,
-    notIssued: "還沒有家庭成員",
-    stats: (o, p) => `本寵物世界已有 ${o} 位主人加入，共 ${p} 隻寵物`,
-    storageWarn: "資料暫時無法儲存，這次的修改在重新整理後可能會消失。",
-    empty1: "這本手帳還是空的。",
-    empty2: "先把牠貼上來吧。",
-    createFirst: "新增第一位成員",
-    addPet: "新增寵物",
-    weightUnknown: "體重未填",
+    issued: (n) => `${n} 位家庭成员`,
+    notIssued: "还没有家庭成员",
+    stats: (o, p) => `本宠物世界已有 ${o} 位主人加入，共 ${p} 只宠物`,
+    storageWarn: "资料暂时无法储存，这次的修改在重新整理后可能会消失。",
+    empty1: "这本手帐还是空的。",
+    empty2: "先把牠贴上来吧。",
+    createFirst: "新增第一位成员",
+    addPet: "新增宠物",
+    weightUnknown: "体重未填",
     kg: (w) => `${w} 公斤`,
-    neuteredTag: "已結紮",
+    neuteredTag: "已结扎",
     back: "← 返回",
-    edit: "編輯",
+    edit: "编辑",
     cancelNav: "← 取消",
     join: "、",
-    speciesName: { dog: "犬", cat: "貓" },
+    speciesName: { dog: "犬", cat: "猫" },
     rows: {
-      species: "物種", gender: "性別", birthday: "生日", weight: "體重", neutered: "結紮",
-      allergies: "過敏原", city: "所在城市", ownerEmail: "主人 Email", note: "備註",
+      species: "物种", gender: "性别", birthday: "生日", weight: "体重", neutered: "结扎",
+      allergies: "过敏原", city: "所在城市", ownerEmail: "主人 Email", note: "备注",
     },
     gender: { male: "公", female: "母" },
-    neuteredYes: "已結紮",
-    neuteredNo: "未結紮",
-    noAllergy: "無",
-    annex1: "營養方向",
-    annex2: "推薦商品",
-    annex3: "養育建議",
-    checkBtn: "檢查一款商品適不適合牠",
-    noProducts: "目前的目錄裡沒有能避開所有過敏原、又符合年齡階段的商品。建議直接諮詢獸醫，或考慮處方飼料。",
+    neuteredYes: "已结扎",
+    neuteredNo: "未结扎",
+    noAllergy: "无",
+    annex1: "营养方向",
+    annex2: "推荐商品",
+    annex3: "养育建议",
+    checkBtn: "检查一款商品适不适合牠",
+    noProducts: "目前的目录里没有能避开所有过敏原、又符合年龄阶段的商品。建议直接咨询兽医，或考虑处方饲料。",
     ingredientsLabel: "主要成分：",
-    whyFor: (n) => `為什麼適合 ${n}`,
+    whyFor: (n) => `为什么适合 ${n}`,
     watchOut: "要留意",
-    disclaimer: "商品為示範資料。建議僅供參考，請以獸醫意見為準。",
-    deleteBtn: "移除這位成員",
-    deleteConfirm: (n) => `刪除後無法復原。確定要移除 ${n} 嗎？`,
-    deleteYes: "確定移除",
+    disclaimer: "商品为示范资料。建议仅供参考，请以兽医意见为准。",
+    deleteBtn: "移除这位成员",
+    deleteConfirm: (n) => `删除后无法复原。确定要移除 ${n} 吗？`,
+    deleteYes: "确定移除",
     cancel: "取消",
-    age: (y, m) => (y === 0 ? `${m} 個月` : m === 0 ? `${y} 歲` : `${y} 歲 ${m} 個月`),
-    stage: { young: { dog: "幼犬", cat: "幼貓" }, adult: { dog: "成犬", cat: "成貓" }, senior: { dog: "熟齡犬", cat: "熟齡貓" } },
+    age: (y, m) => (y === 0 ? `${m} 个月` : m === 0 ? `${y} 岁` : `${y} 岁 ${m} 个月`),
+    stage: { young: { dog: "幼犬", cat: "幼猫" }, adult: { dog: "成犬", cat: "成猫" }, senior: { dog: "熟龄犬", cat: "熟龄猫" } },
     advice: {
-      age: "年齡", neutered: "結紮", allergies: "過敏原",
-      young: (s) => `建議選擇${s}專用飼料，此階段的蛋白質與熱量需求較高。`,
-      adult: (s) => `建議選擇${s}維持期飼料，維持穩定的體態即可。`,
-      senior: "已進入熟齡階段，建議選擇熟齡專用配方，並留意關節與腎臟保健。",
-      neuteredV: "結紮後代謝率下降約 20%，建議改用低脂或體重管理配方。",
-      allergyV: (list) => `請避開含有 ${list} 的成分，可考慮單一蛋白質來源配方。`,
+      age: "年龄", neutered: "结扎", allergies: "过敏原",
+      young: (s) => `建议选择${s}专用饲料，此阶段的蛋白质与热量需求较高。`,
+      adult: (s) => `建议选择${s}维持期饲料，维持稳定的体态即可。`,
+      senior: "已进入熟龄阶段，建议选择熟龄专用配方，并留意关节与肾脏保健。",
+      neuteredV: "结扎后代谢率下降约 20%，建议改用低脂或体重管理配方。",
+      allergyV: (list) => `请避开含有 ${list} 的成分，可考虑单一蛋白质来源配方。`,
     },
     reasons: {
-      stageExact: (s) => `${s}專用，營養比例剛好。`,
-      stageAll: "全齡都能吃。",
+      stageExact: (s) => `${s}专用，营养比例刚好。`,
+      stageAll: "全龄都能吃。",
       noAllergen: (list) => `不含${list}。`,
-      single: (p) => `只用一種肉（${p}），過敏體質比較安心。`,
-      neuteredWeight: "低熱量配方，結紮後不容易胖。",
-      neuteredWarn: "不是減重配方，結紮後請少餵一點。",
-      seniorJoint: "有加關節保健成分。",
-      seniorWarn: "沒有關節保健成分。",
-      small: (w) => `顆粒小，${w} 公斤的小型犬好咬。`,
-      large: (w) => `${w} 公斤的大型犬，這款有控制鈣磷，骨頭負擔小。`,
+      single: (p) => `只用一种肉（${p}），过敏体质比较安心。`,
+      neuteredWeight: "低热量配方，结扎后不容易胖。",
+      neuteredWarn: "不是减重配方，结扎后请少喂一点。",
+      seniorJoint: "有加关节保健成分。",
+      seniorWarn: "没有关节保健成分。",
+      small: (w) => `颗粒小，${w} 公斤的小型犬好咬。`,
+      large: (w) => `${w} 公斤的大型犬，这款有控制钙磷，骨头负担小。`,
     },
-    tags: { weight: "體重管理", highProtein: "高蛋白", single: "單一蛋白", joint: "關節保健", small: "小型犬", large: "大型犬", grainFree: "無穀" },
+    tags: { weight: "体重管理", highProtein: "高蛋白", single: "单一蛋白", joint: "关节保健", small: "小型犬", large: "大型犬", grainFree: "无谷" },
     care: {
-      k: { exercise: "運動", grooming: "美容", health: "健康", home: "環境", social: "社交" },
+      k: { exercise: "运动", grooming: "美容", health: "健康", home: "环境", social: "社交" },
       dog: {
-        exPuppy: "幼犬骨頭還在長，散步短一點、次數多一點：每大一個月，每次多 5 分鐘。別跳高、別跑遠。",
-        exSmall: "每天散步 30 分鐘左右，加一點在家玩就夠。",
-        exMedium: "每天動 45–60 分鐘。散步之外聞聞東西、撿撿球，牠會更安定。",
-        exLarge: "每天至少 60 分鐘，分兩次。夏天挑早晚，地面太燙別走。",
-        exSenior: "每天短短散步就好，但別停。少爬樓梯、少跳沙發，地板鋪防滑墊。",
-        grPoodle: "捲毛要天天梳，一個多月修一次，不然會打結。",
-        grSpitz: "每週梳 2–3 次，換毛季天天梳。不要剃毛。",
-        grRetriever: "每週梳 1–2 次。垂耳要常檢查、保持乾燥。",
-        grShepherd: "每週梳 2 次，掉毛多。留意腳掌磨損。",
-        grFrenchie: "臉上皺褶每天擦乾淨。鼻子短容易熱，夏天中午別出門。",
-        grLong: "腰長腿短，別讓牠跳上跳下，體重顧好。",
-        grSchnauzer: "吃完擦鬍子。一個多月修一次毛。",
-        grToy: "天天梳毛、擦眼睛。冬天保暖，夏天別曬太久。",
-        grMix: "短毛每週梳一次，長毛天天梳。順便看看耳朵、指甲、牙齒。",
-        hpPuppy: "疫苗從 6–8 週開始，打完 16 週那劑之前別去狗公園。驅蟲照獸醫排程。",
-        hpAdult: "一年健檢一次。常刷牙，牙結石最常見。",
-        hpSenior: "7 歲後半年檢查一次，順便驗血。體重、喝水、走路有變就早點看醫生。",
-        hpNeutered: "結紮後容易胖，每月量體重，肋骨要摸得到。",
-        hpAllergy: (list) => `對${list}過敏：買東西先看成分，餐桌食物不給。會癢、耳朵發炎、拉肚子通常就是過敏。`,
-        home: "給牠一個固定的安靜角落。每天 10 分鐘聞聞遊戲或簡單訓練，比較不會亂咬東西。",
-        soPuppy: "3–14 週多接觸人、聲音、不同地面和溫和的成犬，每次短短的、開心的。",
-        soAdult: "第一次見面先牽繩、在外面見。看到僵住或低吼就分開。",
-        soIntactMale: "未結紮公犬遇到未結紮公犬容易起衝突，第一次見面多留意。",
+        exPuppy: "幼犬骨头还在长，散步短一点、次数多一点：每大一个月，每次多 5 分钟。别跳高、别跑远。",
+        exSmall: "每天散步 30 分钟左右，加一点在家玩就够。",
+        exMedium: "每天动 45–60 分钟。散步之外闻闻东西、捡捡球，牠会更安定。",
+        exLarge: "每天至少 60 分钟，分两次。夏天挑早晚，地面太烫别走。",
+        exSenior: "每天短短散步就好，但别停。少爬楼梯、少跳沙发，地板铺防滑垫。",
+        grPoodle: "卷毛要天天梳，一个多月修一次，不然会打结。",
+        grSpitz: "每周梳 2–3 次，换毛季天天梳。不要剃毛。",
+        grRetriever: "每周梳 1–2 次。垂耳要常检查、保持干燥。",
+        grShepherd: "每周梳 2 次，掉毛多。留意脚掌磨损。",
+        grFrenchie: "脸上皱褶每天擦干净。鼻子短容易热，夏天中午别出门。",
+        grLong: "腰长腿短，别让牠跳上跳下，体重顾好。",
+        grSchnauzer: "吃完擦胡子。一个多月修一次毛。",
+        grToy: "天天梳毛、擦眼睛。冬天保暖，夏天别晒太久。",
+        grMix: "短毛每周梳一次，长毛天天梳。顺便看看耳朵、指甲、牙齿。",
+        hpPuppy: "疫苗从 6–8 周开始，打完 16 周那剂之前别去狗公园。驱虫照兽医排程。",
+        hpAdult: "一年健检一次。常刷牙，牙结石最常见。",
+        hpSenior: "7 岁后半年检查一次，顺便验血。体重、喝水、走路有变就早点看医生。",
+        hpNeutered: "结扎后容易胖，每月量体重，肋骨要摸得到。",
+        hpAllergy: (list) => `对${list}过敏：买东西先看成分，餐桌食物不给。会痒、耳朵发炎、拉肚子通常就是过敏。`,
+        home: "给牠一个固定的安静角落。每天 10 分钟闻闻游戏或简单训练，比较不会乱咬东西。",
+        soPuppy: "3–14 周多接触人、声音、不同地面和温和的成犬，每次短短的、开心的。",
+        soAdult: "第一次见面先牵绳、在外面见。看到僵住或低吼就分开。",
+        soIntactMale: "未结扎公犬遇到未结扎公犬容易起冲突，第一次见面多留意。",
       },
       cat: {
-        exKitten: "幼貓精力多，一天多玩幾次逗貓棒，每次 10 分鐘。咬人就換成玩具。",
-        exAdult: "每天兩次逗貓棒，每次 10–15 分鐘，讓牠追、撲、抓到。玩完再餵。",
-        exSenior: "還是要玩，但慢一點、在地上玩。跳台降低或加一階。",
-        grFluffy: "長毛天天梳，腋下、肚子、大腿內側最會打結。",
-        grShorthair: "短毛每週梳一次，換毛季多梳。順便看皮膚。",
-        grSphynx: "沒毛的皮膚會出油，每週擦一次或洗澡。怕冷也怕曬。",
-        grFold: "耳朵每週清。摺耳貓天生軟骨弱，走路怪怪的就看醫生。",
-        grMunchkin: "腿短別從高處跳，跳台要低階梯。體重顧好。",
-        hpKitten: "疫苗從 8 週開始，打完前待在家裡。驅蟲照獸醫排程。",
-        hpAdult: "一年健檢一次。多給濕食或加水，泌尿問題少很多。",
-        hpSenior: "7 歲後半年檢查一次，重點是腎和甲狀腺。喝很多水、變瘦要注意。",
-        hpNeutered: "結紮後熱量少 20–30%，用量杯餵、每月量體重。",
-        hpAllergy: (list) => `對${list}過敏：零食主食都看成分。脖子臉部抓癢、拉肚子通常就是過敏。`,
-        home: "貓砂盆比貓多一個。要有跳台或窗台、一個能躲的地方。磨爪板放牠常走的路上。",
-        soGeneral: "貓不需要交朋友，你就是牠最好的玩伴。",
-        soKitten: "想養第二隻，1 歲前最容易接受，但還是要分房慢慢介紹。",
-        soAdult: "成貓接受新貓要幾週到幾個月，個性合不合比年齡重要。",
-        soSenior: "老貓喜歡安靜，別找活潑幼貓來吵牠。",
+        exKitten: "幼猫精力多，一天多玩几次逗猫棒，每次 10 分钟。咬人就换成玩具。",
+        exAdult: "每天两次逗猫棒，每次 10–15 分钟，让牠追、扑、抓到。玩完再喂。",
+        exSenior: "还是要玩，但慢一点、在地上玩。跳台降低或加一阶。",
+        grFluffy: "长毛天天梳，腋下、肚子、大腿内侧最会打结。",
+        grShorthair: "短毛每周梳一次，换毛季多梳。顺便看皮肤。",
+        grSphynx: "没毛的皮肤会出油，每周擦一次或洗澡。怕冷也怕晒。",
+        grFold: "耳朵每周清。折耳猫天生软骨弱，走路怪怪的就看医生。",
+        grMunchkin: "腿短别从高处跳，跳台要低阶梯。体重顾好。",
+        hpKitten: "疫苗从 8 周开始，打完前待在家里。驱虫照兽医排程。",
+        hpAdult: "一年健检一次。多给湿食或加水，泌尿问题少很多。",
+        hpSenior: "7 岁后半年检查一次，重点是肾和甲状腺。喝很多水、变瘦要注意。",
+        hpNeutered: "结扎后热量少 20–30%，用量杯喂、每月量体重。",
+        hpAllergy: (list) => `对${list}过敏：零食主食都看成分。脖子脸部抓痒、拉肚子通常就是过敏。`,
+        home: "猫砂盆比猫多一个。要有跳台或窗台、一个能躲的地方。磨爪板放牠常走的路上。",
+        soGeneral: "猫不需要交朋友，你就是牠最好的玩伴。",
+        soKitten: "想养第二只，1 岁前最容易接受，但还是要分房慢慢介绍。",
+        soAdult: "成猫接受新猫要几周到几个月，个性合不合比年龄重要。",
+        soSenior: "老猫喜欢安静，别找活泼幼猫来吵牠。",
       },
-      sources: "參考 AAHA、WSAVA、AVSAB、International Cat Care 的指引。一般建議，有狀況請問獸醫。",
+      sources: "参考 AAHA、WSAVA、AVSAB、International Cat Care 的指引。一般建议，有状况请问兽医。",
     },
     mates: {
-      btn: "尋找附近的玩伴",
+      btn: "寻找附近的玩伴",
       nav: "PLAYMATES",
-      title: (n) => `為 ${n} 尋找附近的玩伴`,
-      intro: (city, sp) => `列出同樣在${city}、也是${sp}的其他寵物，依年齡階段、體型、結紮狀態挑出最合適的一位。`,
-      noCity: "還沒設定所在城市。到「編輯」把城市填上，就能找同城的玩伴。",
-      loading: "尋找中…",
-      none: (city) => `${city}目前還沒有其他寵物登記。`,
-      best: "最佳配對",
-      why: "配對理由",
+      title: (n) => `为 ${n} 寻找附近的玩伴`,
+      intro: (city, sp) => `列出同样在${city}、也是${sp}的其他宠物，依年龄阶段、体型、结扎状态挑出最合适的一位。`,
+      noCity: "还没设定所在城市。到「编辑」把城市填上，就能找同城的玩伴。",
+      loading: "寻找中…",
+      none: (city) => `${city}目前还没有其他宠物登记。`,
+      best: "最佳配对",
+      why: "配对理由",
       contact: "主人 Email",
-      noEmail: "主人沒有留 Email",
-      catNote: "貓是領域性動物，不建議直接見面；這裡的配對比較適合用來和飼主交流養貓經驗。",
-      fail: "讀取失敗，請稍後再試。",
+      noEmail: "主人没有留 Email",
+      catNote: "猫是领域性动物，不建议直接见面；这里的配对比较适合用来和饲主交流养猫经验。",
+      fail: "读取失败，请稍后再试。",
       r: {
-        sameStage: (s) => `年齡階段相同，都是${s}`,
-        nearStage: "年齡階段相近",
-        sizeClose: (a, b) => `體型相近（${a} 與 ${b} 公斤）`,
-        sizeOk: "體型差距在可接受範圍",
-        sizeUnknown: "有一方體重未填，無法比對體型",
-        bothNeutered: "都已結紮，互動通常較穩定",
-        intactMales: "兩隻都是未結紮公犬，初次見面要特別留意",
-        only: "目前同城只有這一位",
+        sameStage: (s) => `年龄阶段相同，都是${s}`,
+        nearStage: "年龄阶段相近",
+        sizeClose: (a, b) => `体型相近（${a} 与 ${b} 公斤）`,
+        sizeOk: "体型差距在可接受范围",
+        sizeUnknown: "有一方体重未填，无法比对体型",
+        bothNeutered: "都已结扎，互动通常较稳定",
+        intactMales: "两只都是未结扎公犬，初次见面要特别留意",
+        only: "目前同城只有这一位",
       },
     },
     check: {
       nav: "CHECK",
-      title: (n) => `幫 ${n} 檢查一款商品`,
-      criteria: "只看兩件事：成分有沒有含牠的過敏原、商品的年齡段對不對。其他營養判斷請交給獸醫。",
-      petLine: (stage, allergies) => `牠現在是${stage}，過敏原：${allergies}`,
-      tier1: "① 輸入條碼",
-      tier1d: "輸入包裝上的條碼數字（通常 13 碼），查詢 Open Pet Food Facts。",
+      title: (n) => `帮 ${n} 检查一款商品`,
+      criteria: "只看两件事：成分有没有含牠的过敏原、商品的年龄段对不对。其他营养判断请交给兽医。",
+      petLine: (stage, allergies) => `牠现在是${stage}，过敏原：${allergies}`,
+      tier1: "① 输入条码",
+      tier1d: "输入包装上的条码数字（通常 13 码），查询 Open Pet Food Facts。",
       barcodePh: "4712345678901",
-      lookup: "查詢",
-      scan: "拍條碼",
-      scanning: "辨識條碼中…",
-      scanAI: "條碼不清楚，改由 AI 讀數字…",
-      scanFail: "照片裡讀不到條碼，請手動輸入數字。拍的時候讓條碼佔滿畫面、對焦清楚、避免反光。",
-      scanByAI: "這串數字是 AI 從照片上讀的，請和包裝核對。",
-      scanHint: "手機拍下包裝上的條碼即可，iPhone 與 Android 都支援。",
-      searching: "查詢中…",
-      notFound: "資料庫裡沒有這個條碼。請改用下面的方式。",
-      netError: "無法連線到資料庫（預覽環境可能限制對外連線，正式版不會）。請改用下面的方式。",
-      opffNote: "資料來源：Open Pet Food Facts（開源社群資料庫）。目前僅比對此資料庫，收錄量有限，亞洲市場商品常查不到。",
-      tier3: "② 手動輸入",
-      tier3d: "查不到時，直接照包裝上的成分表點選或輸入。",
-      manualStart: "開始手動輸入",
-      productTitle: "商品資訊",
-      nameLabel: "商品名稱",
+      lookup: "查询",
+      scan: "拍条码",
+      scanning: "辨识条码中…",
+      scanAI: "条码不清楚，改由 AI 读数字…",
+      scanFail: "照片里读不到条码，请手动输入数字。拍的时候让条码占满画面、对焦清楚、避免反光。",
+      scanByAI: "这串数字是 AI 从照片上读的，请和包装核对。",
+      scanHint: "手机拍下包装上的条码即可，iPhone 与 Android 都支援。",
+      searching: "查询中…",
+      notFound: "资料库里没有这个条码。请改用下面的方式。",
+      netError: "无法连线到资料库（预览环境可能限制对外连线，正式版不会）。请改用下面的方式。",
+      opffNote: "资料来源：Open Pet Food Facts（开源社群资料库）。目前仅比对此资料库，收录量有限，亚洲市场商品常查不到。",
+      tier3: "② 手动输入",
+      tier3d: "查不到时，直接照包装上的成分表点选或输入。",
+      manualStart: "开始手动输入",
+      productTitle: "商品资讯",
+      nameLabel: "商品名称",
       ingLabel: "成分（可修改）",
-      pickIng: "常見成分（點選，可多選）",
-      extraIng: "其他成分（選單裡沒有的，直接抄包裝）",
-      pickedPreview: (t) => `會用來比對的成分：${t}`,
+      pickIng: "常见成分（点选，可多选）",
+      extraIng: "其他成分（选单里没有的，直接抄包装）",
+      pickedPreview: (t) => `会用来比对的成分：${t}`,
       ingPh: "chicken, brown rice, …",
-      stageLabel: "商品適用年齡段",
-      stages: { young: "幼年", adult: "成年", senior: "熟齡", all: "全齡", unknown: "不確定" },
-      sourceLabel: "來源：",
-      sources: { opff: "Open Pet Food Facts", manual: "手動輸入" },
-      clear: "清除重來",
-      resultTitle: "判斷結果",
-      verdict: { bad: "不建議", ok: "可以考慮", stageMismatch: "年齡段不符", stageUnknown: "過敏原沒問題，年齡段不確定" },
-      allergenHit: (list) => `含有牠的過敏原：${list}`,
-      allergenNone: "沒有發現牠的過敏原",
-      petNoAllergy: "牠沒有登記過敏原，所以第一項無法比對。想比對請先在資料裡填上。",
-      stageOk: (p) => `年齡段相符（${p}）`,
-      stageAll: "全齡配方，年齡段沒問題",
-      stageBad: (prod, pet) => `年齡段不符：商品是${prod}用，牠是${pet}`,
-      stageUnk: "無法從資料判斷年齡段，請看包裝確認",
-      resultNote: "此判斷只依據上述兩個條件，不代表營養上完全合適。慢性病、處方需求請諮詢獸醫。",
+      stageLabel: "商品适用年龄段",
+      stages: { young: "幼年", adult: "成年", senior: "熟龄", all: "全龄", unknown: "不确定" },
+      sourceLabel: "来源：",
+      sources: { opff: "Open Pet Food Facts", manual: "手动输入" },
+      clear: "清除重来",
+      resultTitle: "判断结果",
+      verdict: { bad: "不建议", ok: "可以考虑", stageMismatch: "年龄段不符", stageUnknown: "过敏原没问题，年龄段不确定" },
+      allergenHit: (list) => `含有牠的过敏原：${list}`,
+      allergenNone: "没有发现牠的过敏原",
+      petNoAllergy: "牠没有登记过敏原，所以第一项无法比对。想比对请先在资料里填上。",
+      stageOk: (p) => `年龄段相符（${p}）`,
+      stageAll: "全龄配方，年龄段没问题",
+      stageBad: (prod, pet) => `年龄段不符：商品是${prod}用，牠是${pet}`,
+      stageUnk: "无法从资料判断年龄段，请看包装确认",
+      resultNote: "此判断只依据上述两个条件，不代表营养上完全合适。慢性病、处方需求请咨询兽医。",
     },
     form: {
       newLabel: "NEW", editLabel: "EDIT",
-      photo: "照片", takePhoto: "拍照", fromGallery: "從相簿選擇", removePhoto: "移除照片",
-      photoHint: "在手機上「拍照」會直接開啟相機；在電腦上會開啟檔案選擇視窗。",
+      photo: "照片", takePhoto: "拍照", fromGallery: "从相簿选择", removePhoto: "移除照片",
+      photoHint: "在手机上「拍照」会直接开启相机；在电脑上会开启档案选择视窗。",
       name: "名字", namePh: "小白",
-      species: "物種", dog: "犬", cat: "貓",
-      breed: "品種", pick: "請選擇", breedOtherPh: "請輸入品種",
-      gender: "性別", male: "公", female: "母",
-      birthday: "生日", birthdayHint: "不確定的話填領養日期就好，之後可以改。",
-      weight: "體重（公斤）", weightHint: "拉到大概的位置，再用 −／＋ 微調。不清楚可以先不填。", weightClear: "清除",
-      neutered: "結紮狀態", yes: "已結紮", no: "未結紮",
-      allergies: "已知過敏原",
-      allergiesHint: "點選所有已知的過敏原，沒有就不用選。",
-      city: "所在城市", cityHint: "之後找玩伴、揪團、附近診所都會用到。",
-      ownerEmail: "主人 Email", ownerEmailHint: "選填。之後聯絡與找回資料會用到。", errEmail: "Email 格式看起來不對，請確認。",
-      note: "備註", notePh: "怕打雷、不能吃太快",
-      errName: "請填寫名字。",
-      errBirthday: "請填寫生日，年齡與飼料建議需要用到。",
-      errFuture: "生日不能是未來的日期。",
-      errPhoto: "這張圖片讀不進來，換一張試試。",
-      guess: "讓 AI 猜物種與品種",
-      guessing: "AI 辨識中…",
-      guessDone: (sp, br, conf) => `AI 猜是${sp}${br ? `・${br}` : ""}（把握${conf}）。已幫你選好，不對請直接改。`,
-      guessNone: "AI 看不出照片裡是狗還是貓，請自己選。",
-      guessFail: "辨識失敗，請自己選。",
-      guessHint: "只是幫你先選。米克斯和幼獸常會猜錯，請以你知道的為準。",
+      species: "物种", dog: "犬", cat: "猫",
+      breed: "品种", pick: "请选择", breedOtherPh: "请输入品种",
+      gender: "性别", male: "公", female: "母",
+      birthday: "生日", birthdayHint: "不确定的话填领养日期就好，之后可以改。",
+      weight: "体重（公斤）", weightHint: "拉到大概的位置，再用 −／＋ 微调。不清楚可以先不填。", weightClear: "清除",
+      neutered: "结扎状态", yes: "已结扎", no: "未结扎",
+      allergies: "已知过敏原",
+      allergiesHint: "点选所有已知的过敏原，没有就不用选。",
+      city: "所在城市", cityHint: "之后找玩伴、揪团、附近诊所都会用到。",
+      ownerEmail: "主人 Email", ownerEmailHint: "选填。之后联络与找回资料会用到。", errEmail: "Email 格式看起来不对，请确认。",
+      note: "备注", notePh: "怕打雷、不能吃太快",
+      errName: "请填写名字。",
+      errBirthday: "请填写生日，年龄与饲料建议需要用到。",
+      errFuture: "生日不能是未来的日期。",
+      errPhoto: "这张图片读不进来，换一张试试。",
+      guess: "让 AI 猜物种与品种",
+      guessing: "AI 辨识中…",
+      guessDone: (sp, br, conf) => `AI 猜是${sp}${br ? `・${br}` : ""}（把握${conf}）。已帮你选好，不对请直接改。`,
+      guessNone: "AI 看不出照片里是狗还是猫，请自己选。",
+      guessFail: "辨识失败，请自己选。",
+      guessHint: "只是帮你先选。米克斯和幼兽常会猜错，请以你知道的为准。",
       conf: { high: "高", medium: "中", low: "低" },
-      save: "儲存修改", issue: "貼進手帳", cancel: "取消",
+      save: "储存修改", issue: "贴进手帐", cancel: "取消",
     },
   },
 
   en: {
     title: "Pet Journal",
-    sub: "寵物手帳",
+    sub: "宠物手帐",
     loading: "Opening the journal…",
     auth: {
       title: "Sign in",
@@ -822,53 +824,53 @@ const LangCtx = createContext({ lang: "en", L: STR.en, setLang: () => {} });
 const useL = () => useContext(LangCtx);
 
 /* ==================================================================
-   資料字典
+   资料字典
 ================================================================== */
 
 const BREEDS = {
   dog: {
-    mix: ["米克斯", "Mixed breed"], shiba: ["柴犬", "Shiba Inu"], poodle: ["貴賓犬", "Poodle"],
-    corgi: ["柯基", "Corgi"], frenchie: ["法國鬥牛犬", "French Bulldog"], pom: ["博美", "Pomeranian"],
-    maltese: ["馬爾濟斯", "Maltese"], chihuahua: ["吉娃娃", "Chihuahua"], dachshund: ["臘腸犬", "Dachshund"],
-    shihtzu: ["西施犬", "Shih Tzu"], yorkie: ["約克夏", "Yorkshire Terrier"], schnauzer: ["雪納瑞", "Schnauzer"],
-    bichon: ["比熊", "Bichon Frise"], husky: ["哈士奇", "Siberian Husky"], golden: ["黃金獵犬", "Golden Retriever"],
-    lab: ["拉布拉多", "Labrador Retriever"], border: ["邊境牧羊犬", "Border Collie"], gsd: ["德國牧羊犬", "German Shepherd"],
-    akita: ["秋田犬", "Akita"], samoyed: ["薩摩耶", "Samoyed"], taiwan: ["台灣犬", "Taiwan Dog"],
+    mix: ["米克斯", "Mixed breed"], shiba: ["柴犬", "Shiba Inu"], poodle: ["贵宾犬", "Poodle"],
+    corgi: ["柯基", "Corgi"], frenchie: ["法国斗牛犬", "French Bulldog"], pom: ["博美", "Pomeranian"],
+    maltese: ["马尔济斯", "Maltese"], chihuahua: ["吉娃娃", "Chihuahua"], dachshund: ["腊肠犬", "Dachshund"],
+    shihtzu: ["西施犬", "Shih Tzu"], yorkie: ["约克夏", "Yorkshire Terrier"], schnauzer: ["雪纳瑞", "Schnauzer"],
+    bichon: ["比熊", "Bichon Frise"], husky: ["哈士奇", "Siberian Husky"], golden: ["黄金猎犬", "Golden Retriever"],
+    lab: ["拉布拉多", "Labrador Retriever"], border: ["边境牧羊犬", "Border Collie"], gsd: ["德国牧羊犬", "German Shepherd"],
+    akita: ["秋田犬", "Akita"], samoyed: ["萨摩耶", "Samoyed"], taiwan: ["台湾犬", "Taiwan Dog"],
     other: ["其他", "Other"],
   },
   cat: {
-    mix: ["米克斯", "Mixed breed"], ash: ["美國短毛貓", "American Shorthair"], bsh: ["英國短毛貓", "British Shorthair"],
-    ragdoll: ["布偶貓", "Ragdoll"], persian: ["波斯貓", "Persian"], fold: ["蘇格蘭摺耳貓", "Scottish Fold"],
-    munchkin: ["曼赤肯", "Munchkin"], siamese: ["暹羅貓", "Siamese"], bengal: ["孟加拉貓", "Bengal"],
-    maine: ["緬因貓", "Maine Coon"], russian: ["俄羅斯藍貓", "Russian Blue"], aby: ["阿比西尼亞貓", "Abyssinian"],
-    norwegian: ["挪威森林貓", "Norwegian Forest Cat"], sphynx: ["斯芬克斯", "Sphynx"], exotic: ["異國短毛貓", "Exotic Shorthair"],
+    mix: ["米克斯", "Mixed breed"], ash: ["美国短毛猫", "American Shorthair"], bsh: ["英国短毛猫", "British Shorthair"],
+    ragdoll: ["布偶猫", "Ragdoll"], persian: ["波斯猫", "Persian"], fold: ["苏格兰折耳猫", "Scottish Fold"],
+    munchkin: ["曼赤肯", "Munchkin"], siamese: ["暹罗猫", "Siamese"], bengal: ["孟加拉猫", "Bengal"],
+    maine: ["缅因猫", "Maine Coon"], russian: ["俄罗斯蓝猫", "Russian Blue"], aby: ["阿比西尼亚猫", "Abyssinian"],
+    norwegian: ["挪威森林猫", "Norwegian Forest Cat"], sphynx: ["斯芬克斯", "Sphynx"], exotic: ["异国短毛猫", "Exotic Shorthair"],
     other: ["其他", "Other"],
   },
 };
 
-/* 城市：存代碼，顯示時翻譯 */
+/* 城市：存代码，显示时翻译 */
 const CITIES = {
   singapore: ["新加坡", "Singapore", "🇸🇬"],
-  fontainebleau: ["楓丹白露", "Fontainebleau", "🇫🇷"],
-  abuDhabi: ["阿布達比", "Abu Dhabi", "🇦🇪"],
+  fontainebleau: ["枫丹白露", "Fontainebleau", "🇫🇷"],
+  abuDhabi: ["阿布达比", "Abu Dhabi", "🇦🇪"],
   other: ["其他", "Other", "🌍"],
 };
-/* 顯示用：國旗 + 城市名，例如「🇸🇬 新加坡」 */
+/* 显示用：国旗 + 城市名，例如「🇸🇬 新加坡」 */
 const cityLabel = (k, lang) => (CITIES[k] ? `${CITIES[k][2]} ${CITIES[k][li(lang)]}` : k || "");
 
 const ING = {
-  chicken: ["雞肉", "Chicken"], brownRice: ["糙米", "Brown rice"], oats: ["燕麥", "Oats"],
-  chickenFat: ["雞脂", "Chicken fat"], fishOil: ["魚油", "Fish oil"], barley: ["大麥", "Barley"],
-  calcium: ["碳酸鈣", "Calcium carbonate"], lamb: ["羊肉", "Lamb"], sweetPotato: ["地瓜", "Sweet potato"],
-  peas: ["豌豆", "Peas"], flaxseed: ["亞麻籽", "Flaxseed"], turkey: ["火雞肉", "Turkey"],
-  cellulose: ["纖維素", "Cellulose"], peaProtein: ["豌豆蛋白", "Pea protein"], salmon: ["鮭魚", "Salmon"],
-  chickpeas: ["鷹嘴豆", "Chickpeas"], lentils: ["扁豆", "Lentils"], duck: ["鴨肉", "Duck"],
-  pumpkin: ["南瓜", "Pumpkin"], glucosamine: ["葡萄糖胺", "Glucosamine"], chondroitin: ["軟骨素", "Chondroitin"],
-  whitefish: ["白魚", "Whitefish"], chickenLiver: ["雞肝", "Chicken liver"], tuna: ["鮪魚", "Tuna"],
-  venison: ["鹿肉", "Venison"], herring: ["鯡魚", "Herring"],
+  chicken: ["鸡肉", "Chicken"], brownRice: ["糙米", "Brown rice"], oats: ["燕麦", "Oats"],
+  chickenFat: ["鸡脂", "Chicken fat"], fishOil: ["鱼油", "Fish oil"], barley: ["大麦", "Barley"],
+  calcium: ["碳酸钙", "Calcium carbonate"], lamb: ["羊肉", "Lamb"], sweetPotato: ["地瓜", "Sweet potato"],
+  peas: ["豌豆", "Peas"], flaxseed: ["亚麻籽", "Flaxseed"], turkey: ["火鸡肉", "Turkey"],
+  cellulose: ["纤维素", "Cellulose"], peaProtein: ["豌豆蛋白", "Pea protein"], salmon: ["鲑鱼", "Salmon"],
+  chickpeas: ["鹰嘴豆", "Chickpeas"], lentils: ["扁豆", "Lentils"], duck: ["鸭肉", "Duck"],
+  pumpkin: ["南瓜", "Pumpkin"], glucosamine: ["葡萄糖胺", "Glucosamine"], chondroitin: ["软骨素", "Chondroitin"],
+  whitefish: ["白鱼", "Whitefish"], chickenLiver: ["鸡肝", "Chicken liver"], tuna: ["鲔鱼", "Tuna"],
+  venison: ["鹿肉", "Venison"], herring: ["鲱鱼", "Herring"],
 };
 
-/* 沒有照片時的剪影。依「體型類型」分 15 種，不是逐一品種寫實，但同一類型的品種共用一張 */
+/* 没有照片时的剪影。依「体型类型」分 15 种，不是逐一品种写实，但同一类型的品种共用一张 */
 const SIL = {
   "spitz": "<ellipse cx=\"54\" cy=\"58\" rx=\"27\" ry=\"16\"/><circle cx=\"36\" cy=\"50\" r=\"10\"/><circle cx=\"25\" cy=\"42\" r=\"14\"/><ellipse cx=\"12\" cy=\"47\" rx=\"9\" ry=\"6\"/><polygon points=\"15,33 18,14 27,30\"/><polygon points=\"25,30 31,14 37,32\"/><rect x=\"33\" y=\"66\" width=\"8\" height=\"26\" rx=\"3\"/><rect x=\"44\" y=\"66\" width=\"8\" height=\"26\" rx=\"3\"/><rect x=\"60\" y=\"66\" width=\"8\" height=\"26\" rx=\"3\"/><rect x=\"71\" y=\"66\" width=\"8\" height=\"26\" rx=\"3\"/><path d=\"M78 50 C 94 46, 94 26, 78 28\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"9\" stroke-linecap=\"round\"/>",
   "retriever": "<ellipse cx=\"54\" cy=\"58\" rx=\"28\" ry=\"16\"/><circle cx=\"36\" cy=\"50\" r=\"10\"/><circle cx=\"24\" cy=\"42\" r=\"13\"/><ellipse cx=\"11\" cy=\"47\" rx=\"10\" ry=\"6\"/><ellipse cx=\"31\" cy=\"45\" rx=\"5\" ry=\"11\"/><rect x=\"33\" y=\"66\" width=\"8\" height=\"26\" rx=\"3\"/><rect x=\"44\" y=\"66\" width=\"8\" height=\"26\" rx=\"3\"/><rect x=\"60\" y=\"66\" width=\"8\" height=\"26\" rx=\"3\"/><rect x=\"71\" y=\"66\" width=\"8\" height=\"26\" rx=\"3\"/><path d=\"M80 52 C 92 58, 96 70, 92 82\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"8\" stroke-linecap=\"round\"/>",
@@ -903,42 +905,42 @@ function silhouetteFor(species, breed) {
 
 const BRANDS = {
   yehara: ["野原", "Yehara"], northfield: ["Northfield", "Northfield"],
-  bluecrest: ["Bluecrest", "Bluecrest"], nekono: ["貓野", "Nekono"],
+  bluecrest: ["Bluecrest", "Bluecrest"], nekono: ["猫野", "Nekono"],
 };
 
 const CATALOG = [
-  { id: "d01", brand: "yehara", name: ["幼犬 雞肉糙米配方", "Puppy Chicken & Brown Rice"], species: "dog", stage: "young", size: "2 kg", protein: "chicken", ingredients: ["chicken", "brownRice", "oats", "chickenFat", "fishOil"], tags: [] },
-  { id: "d02", brand: "yehara", name: ["大型幼犬 骨骼發育配方", "Large Breed Puppy Bone Support"], species: "dog", stage: "young", size: "6 kg", protein: "chicken", ingredients: ["chicken", "brownRice", "barley", "fishOil", "calcium"], tags: ["large"] },
-  { id: "d03", brand: "yehara", name: ["小型成犬 小顆粒配方", "Small Breed Adult Mini Kibble"], species: "dog", stage: "adult", size: "1.5 kg", protein: "chicken", ingredients: ["chicken", "brownRice", "oats", "chickenFat"], tags: ["small"] },
+  { id: "d01", brand: "yehara", name: ["幼犬 鸡肉糙米配方", "Puppy Chicken & Brown Rice"], species: "dog", stage: "young", size: "2 kg", protein: "chicken", ingredients: ["chicken", "brownRice", "oats", "chickenFat", "fishOil"], tags: [] },
+  { id: "d02", brand: "yehara", name: ["大型幼犬 骨骼发育配方", "Large Breed Puppy Bone Support"], species: "dog", stage: "young", size: "6 kg", protein: "chicken", ingredients: ["chicken", "brownRice", "barley", "fishOil", "calcium"], tags: ["large"] },
+  { id: "d03", brand: "yehara", name: ["小型成犬 小颗粒配方", "Small Breed Adult Mini Kibble"], species: "dog", stage: "adult", size: "1.5 kg", protein: "chicken", ingredients: ["chicken", "brownRice", "oats", "chickenFat"], tags: ["small"] },
   { id: "d04", brand: "yehara", name: ["成犬 羊肉地瓜配方", "Adult Lamb & Sweet Potato"], species: "dog", stage: "adult", size: "2 kg", protein: "lamb", ingredients: ["lamb", "sweetPotato", "peas", "flaxseed"], tags: ["single", "grainFree"] },
-  { id: "d05", brand: "northfield", name: ["成犬 體重管理配方", "Adult Weight Control"], species: "dog", stage: "adult", size: "3 kg", protein: "turkey", ingredients: ["turkey", "barley", "cellulose", "peaProtein"], tags: ["weight"] },
-  { id: "d06", brand: "bluecrest", name: ["運動犬 高蛋白鮭魚配方", "Active Dog High-Protein Salmon"], species: "dog", stage: "adult", size: "2 kg", protein: "salmon", ingredients: ["salmon", "chicken", "chickpeas", "lentils"], tags: ["highProtein", "grainFree"] },
-  { id: "d07", brand: "bluecrest", name: ["全齡犬 鴨肉單一蛋白", "All Life Stages Duck Single Protein"], species: "dog", stage: "all", size: "2 kg", protein: "duck", ingredients: ["duck", "sweetPotato", "peas", "pumpkin"], tags: ["single", "grainFree"] },
-  { id: "d08", brand: "northfield", name: ["熟齡犬 關節保健配方", "Senior Joint Care"], species: "dog", stage: "senior", size: "3 kg", protein: "chicken", ingredients: ["chicken", "brownRice", "glucosamine", "chondroitin", "fishOil"], tags: ["joint"] },
-  { id: "d09", brand: "northfield", name: ["熟齡犬 低脂白魚配方", "Senior Low-Fat Whitefish"], species: "dog", stage: "senior", size: "2 kg", protein: "whitefish", ingredients: ["whitefish", "brownRice", "cellulose", "glucosamine"], tags: ["weight", "joint", "single"] },
-  { id: "c01", brand: "nekono", name: ["幼貓 雞肉配方", "Kitten Chicken"], species: "cat", stage: "young", size: "1.5 kg", protein: "chicken", ingredients: ["chicken", "chickenLiver", "brownRice", "fishOil"], tags: [] },
-  { id: "c02", brand: "nekono", name: ["成貓 鮪魚雞肉配方", "Adult Tuna & Chicken"], species: "cat", stage: "adult", size: "2 kg", protein: "tuna", ingredients: ["tuna", "chicken", "brownRice", "fishOil"], tags: [] },
-  { id: "c03", brand: "nekono", name: ["結紮貓 體重管理配方", "Neutered Cat Weight Control"], species: "cat", stage: "adult", size: "2 kg", protein: "chicken", ingredients: ["chicken", "barley", "cellulose", "peaProtein"], tags: ["weight"] },
-  { id: "c04", brand: "bluecrest", name: ["全齡貓 鹿肉單一蛋白", "All Life Stages Venison Single Protein"], species: "cat", stage: "all", size: "1.5 kg", protein: "venison", ingredients: ["venison", "peas", "sweetPotato", "pumpkin"], tags: ["single", "grainFree"] },
-  { id: "c05", brand: "bluecrest", name: ["活力貓 高蛋白鮭魚配方", "Active Cat High-Protein Salmon"], species: "cat", stage: "adult", size: "1.5 kg", protein: "salmon", ingredients: ["salmon", "herring", "chickpeas", "lentils"], tags: ["highProtein", "grainFree"] },
-  { id: "c06", brand: "northfield", name: ["熟齡貓 關節腎臟配方", "Senior Joint & Kidney Support"], species: "cat", stage: "senior", size: "2 kg", protein: "chicken", ingredients: ["chicken", "brownRice", "glucosamine", "fishOil"], tags: ["joint"] },
-  { id: "c07", brand: "northfield", name: ["熟齡貓 低脂白魚配方", "Senior Low-Fat Whitefish"], species: "cat", stage: "senior", size: "1.5 kg", protein: "whitefish", ingredients: ["whitefish", "brownRice", "cellulose", "glucosamine"], tags: ["weight", "joint", "single"] },
+  { id: "d05", brand: "northfield", name: ["成犬 体重管理配方", "Adult Weight Control"], species: "dog", stage: "adult", size: "3 kg", protein: "turkey", ingredients: ["turkey", "barley", "cellulose", "peaProtein"], tags: ["weight"] },
+  { id: "d06", brand: "bluecrest", name: ["运动犬 高蛋白鲑鱼配方", "Active Dog High-Protein Salmon"], species: "dog", stage: "adult", size: "2 kg", protein: "salmon", ingredients: ["salmon", "chicken", "chickpeas", "lentils"], tags: ["highProtein", "grainFree"] },
+  { id: "d07", brand: "bluecrest", name: ["全龄犬 鸭肉单一蛋白", "All Life Stages Duck Single Protein"], species: "dog", stage: "all", size: "2 kg", protein: "duck", ingredients: ["duck", "sweetPotato", "peas", "pumpkin"], tags: ["single", "grainFree"] },
+  { id: "d08", brand: "northfield", name: ["熟龄犬 关节保健配方", "Senior Joint Care"], species: "dog", stage: "senior", size: "3 kg", protein: "chicken", ingredients: ["chicken", "brownRice", "glucosamine", "chondroitin", "fishOil"], tags: ["joint"] },
+  { id: "d09", brand: "northfield", name: ["熟龄犬 低脂白鱼配方", "Senior Low-Fat Whitefish"], species: "dog", stage: "senior", size: "2 kg", protein: "whitefish", ingredients: ["whitefish", "brownRice", "cellulose", "glucosamine"], tags: ["weight", "joint", "single"] },
+  { id: "c01", brand: "nekono", name: ["幼猫 鸡肉配方", "Kitten Chicken"], species: "cat", stage: "young", size: "1.5 kg", protein: "chicken", ingredients: ["chicken", "chickenLiver", "brownRice", "fishOil"], tags: [] },
+  { id: "c02", brand: "nekono", name: ["成猫 鲔鱼鸡肉配方", "Adult Tuna & Chicken"], species: "cat", stage: "adult", size: "2 kg", protein: "tuna", ingredients: ["tuna", "chicken", "brownRice", "fishOil"], tags: [] },
+  { id: "c03", brand: "nekono", name: ["结扎猫 体重管理配方", "Neutered Cat Weight Control"], species: "cat", stage: "adult", size: "2 kg", protein: "chicken", ingredients: ["chicken", "barley", "cellulose", "peaProtein"], tags: ["weight"] },
+  { id: "c04", brand: "bluecrest", name: ["全龄猫 鹿肉单一蛋白", "All Life Stages Venison Single Protein"], species: "cat", stage: "all", size: "1.5 kg", protein: "venison", ingredients: ["venison", "peas", "sweetPotato", "pumpkin"], tags: ["single", "grainFree"] },
+  { id: "c05", brand: "bluecrest", name: ["活力猫 高蛋白鲑鱼配方", "Active Cat High-Protein Salmon"], species: "cat", stage: "adult", size: "1.5 kg", protein: "salmon", ingredients: ["salmon", "herring", "chickpeas", "lentils"], tags: ["highProtein", "grainFree"] },
+  { id: "c06", brand: "northfield", name: ["熟龄猫 关节肾脏配方", "Senior Joint & Kidney Support"], species: "cat", stage: "senior", size: "2 kg", protein: "chicken", ingredients: ["chicken", "brownRice", "glucosamine", "fishOil"], tags: ["joint"] },
+  { id: "c07", brand: "northfield", name: ["熟龄猫 低脂白鱼配方", "Senior Low-Fat Whitefish"], species: "cat", stage: "senior", size: "1.5 kg", protein: "whitefish", ingredients: ["whitefish", "brownRice", "cellulose", "glucosamine"], tags: ["weight", "joint", "single"] },
 ];
 
-/* 過敏原：固定選項。key 存進資料、label 用來顯示、terms 用來比對成分表 */
+/* 过敏原：固定选项。key 存进资料、label 用来显示、terms 用来比对成分表 */
 const ALLERGENS = {
-  chicken: { label: ["雞肉", "Chicken"], terms: ["chicken", "雞", "鸡", "poultry"] },
+  chicken: { label: ["鸡肉", "Chicken"], terms: ["chicken", "雞", "鸡", "poultry"] },
   beef:    { label: ["牛肉", "Beef"],    terms: ["beef", "牛肉"] },
-  pork:    { label: ["豬肉", "Pork"],    terms: ["pork", "豬肉", "猪肉", "豬", "猪"] },
+  pork:    { label: ["猪肉", "Pork"],    terms: ["pork", "豬肉", "猪肉", "豬", "猪"] },
   lamb:    { label: ["羊肉", "Lamb"],    terms: ["lamb", "mutton", "羊肉", "羊"] },
-  fish:    { label: ["魚類", "Fish"],    terms: ["fish", "魚", "鱼", "salmon", "鮭", "tuna", "鮪", "herring", "鯡", "cod", "鱈", "sardine", "anchovy"] },
-  salmon:  { label: ["鮭魚", "Salmon"],  terms: ["salmon", "鮭", "鲑"] },
-  tuna:    { label: ["鮪魚", "Tuna"],    terms: ["tuna", "鮪", "金槍魚"] },
-  duck:    { label: ["鴨肉", "Duck"],    terms: ["duck", "鴨", "鸭"] },
-  turkey:  { label: ["火雞肉", "Turkey"], terms: ["turkey", "火雞", "火鸡"] },
+  fish:    { label: ["鱼类", "Fish"],    terms: ["fish", "魚", "鱼", "salmon", "鮭", "tuna", "鮪", "herring", "鯡", "cod", "鱈", "sardine", "anchovy"] },
+  salmon:  { label: ["鲑鱼", "Salmon"],  terms: ["salmon", "鮭", "鲑"] },
+  tuna:    { label: ["鲔鱼", "Tuna"],    terms: ["tuna", "鮪", "金槍魚"] },
+  duck:    { label: ["鸭肉", "Duck"],    terms: ["duck", "鴨", "鸭"] },
+  turkey:  { label: ["火鸡肉", "Turkey"], terms: ["turkey", "火雞", "火鸡"] },
   egg:     { label: ["蛋", "Egg"],       terms: ["egg", "雞蛋", "鸡蛋", "蛋黃", "蛋粉", "全蛋"] },
-  dairy:   { label: ["乳製品", "Dairy"], terms: ["dairy", "milk", "cheese", "whey", "lactose", "牛奶", "奶粉", "乳清", "起司", "乳酪"] },
-  wheat:   { label: ["小麥", "Wheat"],   terms: ["wheat", "gluten", "小麥", "小麦", "麩質"] },
+  dairy:   { label: ["乳制品", "Dairy"], terms: ["dairy", "milk", "cheese", "whey", "lactose", "牛奶", "奶粉", "乳清", "起司", "乳酪"] },
+  wheat:   { label: ["小麦", "Wheat"],   terms: ["wheat", "gluten", "小麥", "小麦", "麩質"] },
   corn:    { label: ["玉米", "Corn"],    terms: ["corn", "maize", "玉米"] },
   soy:     { label: ["大豆", "Soy"],     terms: ["soy", "soya", "soybean", "大豆", "黃豆", "黄豆"] },
   rice:    { label: ["米", "Rice"],      terms: ["rice", "大米", "白米", "糙米", "米飯"] },
@@ -946,13 +948,13 @@ const ALLERGENS = {
 };
 const ALLERGEN_KEYS = Object.keys(ALLERGENS);
 
-/* 手動輸入成分時的點選清單：先列 16 個過敏原（比對真正在乎的），再列常見的其他成分 */
+/* 手动输入成分时的点选清单：先列 16 个过敏原（比对真正在乎的），再列常见的其他成分 */
 const MANUAL_ING = [
   ...ALLERGEN_KEYS.map((k) => ({ key: "a:" + k, label: ALLERGENS[k].label, term: ALLERGENS[k].terms[0] })),
   ...["brownRice", "oats", "barley", "sweetPotato", "peas", "chickpeas", "lentils", "pumpkin", "flaxseed", "fishOil", "chickenFat", "chickenLiver", "venison", "whitefish", "herring", "glucosamine"]
     .map((k) => ({ key: "i:" + k, label: ING[k], term: ING[k][1].toLowerCase() })),
 ];
-/* 點選的 + 手打的 → 一段文字，交給 checkProduct 比對 */
+/* 点选的 + 手打的 → 一段文字，交给 checkProduct 比对 */
 function combineIngredients(picked, extra) {
   const chosen = MANUAL_ING.filter((m) => picked.includes(m.key)).map((m) => m.term);
   return [...chosen, (extra || "").trim()].filter(Boolean).join(", ");
@@ -1005,7 +1007,7 @@ function breedLabel(species, raw, lang) {
 }
 const ingName = (k, lang) => (ING[k] ? ING[k][li(lang)] : k);
 
-/* 把過敏原 key 展開成一組比對用的詞；舊資料若是自由文字，模糊對應到最接近的選項 */
+/* 把过敏原 key 展开成一组比对用的词；旧资料若是自由文字，模糊对应到最接近的选项 */
 function expandAllergen(raw) {
   const a = String(raw).trim().toLowerCase();
   const terms = new Set([a]);
@@ -1029,14 +1031,14 @@ function normalizeAllergen(raw) {
 const allergenLabel = (a, lang) => (ALLERGENS[a] ? ALLERGENS[a].label[li(lang)] : a);
 const allergenList = (arr, lang, L) => (arr || []).map((a) => allergenLabel(a, lang)).join(L.join);
 
-/* 商品目錄的成分是否含某過敏原 */
+/* 商品目录的成分是否含某过敏原 */
 function ingredientMatches(ingKey, allergen) {
   const [zh, en] = ING[ingKey] || [ingKey, ingKey];
   const hay = (zh + " " + en).toLowerCase();
   return expandAllergen(allergen).some((t) => hay.includes(t));
 }
 
-/* 從商品名稱或分類文字推測年齡段 */
+/* 从商品名称或分类文字推测年龄段 */
 function inferStage(text) {
   const t = (text || "").toLowerCase();
   if (/all life|all ages|all stages|全齡|全年齡/.test(t)) return "all";
@@ -1086,7 +1088,7 @@ function recommendProducts(pet, L, lang) {
   return results.slice(0, 1);
 }
 
-/* 養育建議：依物種、月齡、體型、品種體型類型、結紮、過敏原 */
+/* 养育建议：依物种、月龄、体型、品种体型类型、结扎、过敏原 */
 function careAdvice(pet, L, lang) {
   const C = L.care;
   const K = C.k;
@@ -1128,8 +1130,8 @@ function careAdvice(pet, L, lang) {
   return out;
 }
 
-/* ---- 玩伴配對：年齡階段、體型、結紮 ----
-   分數規則和資料庫的 find_playmates() 完全相同，改一邊要記得改另一邊 */
+/* ---- 玩伴配对：年龄阶段、体型、结扎 ----
+   分数规则和资料库的 find_playmates() 完全相同，改一边要记得改另一边 */
 function stageN(birthday) {
   const a = ageParts(birthday);
   const m = a ? a.y * 12 + a.m : 36;
@@ -1162,8 +1164,8 @@ function playmateReasons(me, o, L, onlyOne) {
   return out;
 }
 
-/* Netlify 版：交給資料庫的 find_playmates()。它只回傳同城、同物種、別人的寵物，
-   而且只有最佳配對那一筆才附主人 Email，其他人的 Email 根本不會離開資料庫。 */
+/* Netlify 版：交给资料库的 find_playmates()。它只回传同城、同物种、别人的宠物，
+   而且只有最佳配对那一笔才附主人 Email，其他人的 Email 根本不会离开资料库。 */
 async function loadPlaymates(pet) {
   const { data, error } = await supabase.rpc("find_playmates", { p_pet_id: pet.id });
   if (error) throw error;
@@ -1174,7 +1176,7 @@ async function loadPlaymates(pet) {
   }));
 }
 
-/* 全站統計：問資料庫的 journal_stats()（不重複的 owner_id 數、寵物筆數），見 migrate-v5-stats.sql */
+/* 全站统计：问资料库的 journal_stats()（不重复的 owner_id 数、宠物笔数），见 migrate-v5-stats.sql */
 async function loadStats() {
   const { data, error } = await supabase.rpc("journal_stats");
   if (error) throw error;
@@ -1182,7 +1184,7 @@ async function loadStats() {
   return { owners: Number(row?.owners || 0), pets: Number(row?.pets || 0) };
 }
 
-/* 檢查商品：只看過敏原與年齡段 */
+/* 检查商品：只看过敏原与年龄段 */
 function checkProduct(pet, prod) {
   const allergies = pet.allergies || [];
   const text = (prod.ingredients || "").toLowerCase();
@@ -1202,7 +1204,7 @@ function checkProduct(pet, prod) {
   return { hits, stageStatus, verdict, petStage, noAllergyRegistered: allergies.length === 0 };
 }
 
-/* ---- 外部資料 ---- */
+/* ---- 外部资料 ---- */
 
 async function lookupOPFF(code) {
   const r = await fetch(`https://world.openpetfoodfacts.org/api/v2/product/${encodeURIComponent(code)}.json`);
@@ -1217,13 +1219,13 @@ async function lookupOPFF(code) {
   return { name: [brand, name].filter(Boolean).join(" "), ingredients: ing, stage: inferStage(stageText) };
 }
 
-/* ---- 條碼辨識（三層） ----
-   ① BarcodeDetector：瀏覽器內建，Chrome / Android 有，iOS Safari 沒有
-   ② ZXing：純 JavaScript 函式庫，所有瀏覽器都能跑，是 iPhone 的主力
-   ③ AI 讀印刷數字：條碼本身糊掉時，讓 Claude 讀條碼下方那串數字，並做校驗碼檢查
-   回傳 { code, via }，via 告訴畫面是哪一層讀到的（AI 讀的要提醒使用者核對） */
+/* ---- 条码辨识（三层） ----
+   ① BarcodeDetector：浏览器内建，Chrome / Android 有，iOS Safari 没有
+   ② ZXing：纯 JavaScript 函式库，所有浏览器都能跑，是 iPhone 的主力
+   ③ AI 读印刷数字：条码本身糊掉时，让 Claude 读条码下方那串数字，并做校验码检查
+   回传 { code, via }，via 告诉画面是哪一层读到的（AI 读的要提醒使用者核对） */
 
-/* GS1 校驗碼（EAN-13 / EAN-8 / UPC-A 通用）：從右數起權重 3,1,3,1…，總和補到 10 的倍數 */
+/* GS1 校验码（EAN-13 / EAN-8 / UPC-A 通用）：从右数起权重 3,1,3,1…，总和补到 10 的倍数 */
 function validBarcode(s) {
   if (!/^(\d{8}|\d{12}|\d{13})$/.test(s)) return false;
   const d = s.split("").map(Number);
@@ -1232,7 +1234,7 @@ function validBarcode(s) {
   return (10 - (sum % 10)) % 10 === check;
 }
 
-/* Netlify 版：ZXing 從 npm 套件載入（package.json 裡的 @zxing/library） */
+/* Netlify 版：ZXing 从 npm 套件载入（package.json 里的 @zxing/library） */
 function loadZXing() {
   return Promise.resolve({ BrowserMultiFormatReader, DecodeHintType, BarcodeFormat });
 }
@@ -1254,7 +1256,7 @@ async function decodeWithZXing(file) {
     ZXing.BarcodeFormat.EAN_13, ZXing.BarcodeFormat.EAN_8, ZXing.BarcodeFormat.UPC_A, ZXing.BarcodeFormat.UPC_E,
   ]);
   const reader = new ZXing.BrowserMultiFormatReader(hints);
-  /* 太大的照片反而難讀；試兩種尺寸 */
+  /* 太大的照片反而难读；试两种尺寸 */
   let lastErr = null;
   for (const size of [1200, 800]) {
     try {
@@ -1272,9 +1274,9 @@ Return ONLY a JSON object, no markdown, no explanation: {"barcode": string|null}
 Digits only, no spaces. Typically 13 digits (EAN-13), 12 (UPC-A) or 8 (EAN-8).
 If any digit is not clearly legible, return null. Never guess.`;
 
-/* ---- 所有「把照片交給 AI」的功能都走這一個函式 ----
-   Netlify 版：呼叫自己的後端 netlify/functions/vision.mjs，金鑰放在那邊。
-   會附上登入 token，沒登入的人不能用（保護你的 API 額度）。 */
+/* ---- 所有「把照片交给 AI」的功能都走这一个函式 ----
+   Netlify 版：呼叫自己的后端 netlify/functions/vision.mjs，金钥放在那边。
+   会附上登入 token，没登入的人不能用（保护你的 API 额度）。 */
 async function visionRequest(b64, prompt, maxTokens) {
   const { data } = await supabase.auth.getSession();
   const token = data?.session?.access_token || "";
@@ -1299,15 +1301,15 @@ async function readBarcodeDigitsWithAI(file) {
 }
 
 async function scanBarcodeFromFile(file, onStage) {
-  try { return { code: await decodeWithDetector(file), via: "detector" }; } catch { /* 下一層 */ }
-  try { return { code: await decodeWithZXing(file), via: "zxing" }; } catch { /* 下一層 */ }
+  try { return { code: await decodeWithDetector(file), via: "detector" }; } catch { /* 下一层 */ }
+  try { return { code: await decodeWithZXing(file), via: "zxing" }; } catch { /* 下一层 */ }
   if (onStage) onStage("ai");
   return { code: await readBarcodeDigitsWithAI(file), via: "ai" };
 }
 
-/* ---- 辨識寵物照片：物種與品種 ----
-   重點是把答案「限定在我們自己的品種表裡」：AI 只能回傳 BREEDS 裡的代碼，
-   回傳其他東西一律當作沒猜到。這樣不會出現表裡沒有的品種，剪影也能對上。 */
+/* ---- 辨识宠物照片：物种与品种 ----
+   重点是把答案「限定在我们自己的品种表里」：AI 只能回传 BREEDS 里的代码，
+   回传其他东西一律当作没猜到。这样不会出现表里没有的品种，剪影也能对上。 */
 function breedCodeList(species) {
   return Object.keys(BREEDS[species]).filter((k) => k !== "other").map((k) => `${k} = ${BREEDS[species][k][1]}`).join(", ");
 }
@@ -1360,21 +1362,21 @@ function readImage(file, max = 480) {
 export default function PetJournal() {
   const [pets, setPets] = useState([]);
   const [lang, setLangState] = useState(() => loadLang());
-  const [session, setSession] = useState(undefined); // undefined = 還在確認、null = 沒登入
+  const [session, setSession] = useState(undefined); // undefined = 还在确认、null = 没登入
   const [loading, setLoading] = useState(false);
   const [loadErr, setLoadErr] = useState(false);
   const [view, setView] = useState({ name: "list" });
   const [storageOk, setStorageOk] = useState(true);
   const L = STR[lang];
 
-  /* 登入狀態：開頁時問一次，之後有變化（點了信裡的連結、登出）會自動通知 */
-  const [anonErr, setAnonErr] = useState(""); // 顯示 Supabase 回的原始錯誤，方便排查
+  /* 登入状态：开页时问一次，之后有变化（点了信里的连结、登出）会自动通知 */
+  const [anonErr, setAnonErr] = useState(""); // 显示 Supabase 回的原始错误，方便排查
   useEffect(() => {
     if (!supabaseConfigured) { setSession(null); return; }
     supabase.auth.getSession().then(async ({ data }) => {
       if (data.session) { setSession(data.session); return; }
       if (AUTH_MODE !== "anonymous") { setSession(null); return; }
-      /* 訪客模式：沒登入就自動開一個匿名帳號，同一個瀏覽器之後都會認得 */
+      /* 访客模式：没登入就自动开一个匿名帐号，同一个浏览器之后都会认得 */
       const { data: a, error } = await supabase.auth.signInAnonymously();
       if (error || !a.session) { setAnonErr((error && (error.message || String(error))) || "no session returned"); setSession(null); } else setSession(a.session);
     }).catch((e) => { setAnonErr(e?.message || String(e)); setSession(null); });
@@ -1382,7 +1384,7 @@ export default function PetJournal() {
     return () => sub.subscription.unsubscribe();
   }, []);
 
-  /* 登入後從雲端載入自己的寵物 */
+  /* 登入后从云端载入自己的宠物 */
   useEffect(() => {
     if (!session) { setPets([]); setView({ name: "list" }); return; }
     let alive = true;
@@ -1396,7 +1398,7 @@ export default function PetJournal() {
 
   function setLang(l) { setLangState(l); saveLang(l); }
 
-  /* 先更新畫面，再寫雲端；寫失敗就亮出提醒 */
+  /* 先更新画面，再写云端；写失败就亮出提醒 */
   async function savePet(pet) {
     const exists = pets.some((p) => p.id === pet.id);
     setPets(exists ? pets.map((p) => (p.id === pet.id ? pet : p)) : [...pets, pet]);
@@ -1435,7 +1437,7 @@ export default function PetJournal() {
   );
 }
 
-/* ---------------- 登入頁 ---------------- */
+/* ---------------- 登入页 ---------------- */
 
 function Login() {
   const { L } = useL();
@@ -1447,7 +1449,7 @@ function Login() {
     const e = email.trim();
     if (!e || state === "sending") return;
     setState("sending");
-    /* 寄魔法連結；使用者點了連結會回到這個網址，Supabase 會自動完成登入 */
+    /* 寄魔法连结；使用者点了连结会回到这个网址，Supabase 会自动完成登入 */
     const { error } = await supabase.auth.signInWithOtp({ email: e, options: { emailRedirectTo: window.location.origin } });
     setState(error ? "error" : "sent");
   }
@@ -1495,7 +1497,7 @@ function LangToggle() {
   );
 }
 
-/* ---------------- 列表頁 ---------------- */
+/* ---------------- 列表页 ---------------- */
 
 function List({ pets, onOpen, onAdd, storageOk, onLogout }) {
   const { lang, L } = useL();
@@ -1555,7 +1557,7 @@ function List({ pets, onOpen, onAdd, storageOk, onLogout }) {
   );
 }
 
-/* ---------------- 詳細頁 ---------------- */
+/* ---------------- 详细页 ---------------- */
 
 function Detail({ pet, onBack, onEdit, onCheck, onMates, onDelete }) {
   const { lang, L } = useL();
@@ -1652,7 +1654,7 @@ function Detail({ pet, onBack, onEdit, onCheck, onMates, onDelete }) {
 
 function Row({ k, v }) { return <div className="pp-row"><dt>{k}</dt><dd>{v}</dd></div>; }
 
-/* ---------------- 檢查商品 ---------------- */
+/* ---------------- 检查商品 ---------------- */
 
 function CheckProduct({ pet, onBack }) {
   const { lang, L } = useL();
@@ -1661,10 +1663,10 @@ function CheckProduct({ pet, onBack }) {
   const [busy, setBusy] = useState("");
   const [msg, setMsg] = useState("");
   const [prod, setProd] = useState(null); // { name, ingredients, stage, source }
-  const [picked, setPicked] = useState([]); // 手動輸入時點選的成分 key
+  const [picked, setPicked] = useState([]); // 手动输入时点选的成分 key
   const togglePick = (k) => setPicked((p) => (p.includes(k) ? p.filter((x) => x !== k) : [...p, k]));
   const barcodeRef = useRef(null);
-  const [scanNote, setScanNote] = useState(""); // 條碼是 AI 讀的時候，提醒使用者核對
+  const [scanNote, setScanNote] = useState(""); // 条码是 AI 读的时候，提醒使用者核对
 
   const petStageName = L.stage[lifeStage(pet)][pet.species];
   const allergyText = pet.allergies?.length ? allergenList(pet.allergies, lang, L) : L.noAllergy;
@@ -1805,7 +1807,7 @@ function CheckProduct({ pet, onBack }) {
   );
 }
 
-/* ---------------- 尋找附近的玩伴 ---------------- */
+/* ---------------- 寻找附近的玩伴 ---------------- */
 
 function Playmates({ pet, allPets, onBack }) {
   const { lang, L } = useL();
@@ -1877,7 +1879,7 @@ function Playmates({ pet, allPets, onBack }) {
   );
 }
 
-/* ---------------- 表單 ---------------- */
+/* ---------------- 表单 ---------------- */
 
 const EMPTY = { name: "", species: "dog", breed: "", gender: "", birthday: "", weightKg: "", neutered: false, allergies: [], city: "", ownerEmail: "", note: "", photo: "" };
 
@@ -1900,7 +1902,7 @@ function PetForm({ pet, onSave, onCancel }) {
   }
   function toggleAllergen(k) { setF((s) => ({ ...s, allergies: s.allergies.includes(k) ? s.allergies.filter((x) => x !== k) : [...s.allergies, k] })); }
   function changeBreed(v) { if (v === "other") { setBreedOther(true); set("breed", ""); } else { setBreedOther(false); set("breed", v); } }
-  const lastFileRef = useRef(null); // 原始照片檔，辨識時用較高解析度
+  const lastFileRef = useRef(null); // 原始照片档，辨识时用较高解析度
   const [guessBusy, setGuessBusy] = useState(false);
   const [guessMsg, setGuessMsg] = useState("");
   async function pickPhoto(e) {
@@ -2063,7 +2065,7 @@ function PetForm({ pet, onSave, onCancel }) {
 }
 
 
-/* ---- 體重拉桿：拉大概位置，用 −／＋ 微調 0.1 ---- */
+/* ---- 体重拉杆：拉大概位置，用 −／＋ 微调 0.1 ---- */
 const WT_RANGE = { dog: { min: 0.5, max: 60, def: 10 }, cat: { min: 0.5, max: 15, def: 4 } };
 function WeightPicker({ value, species, onChange }) {
   const { L } = useL();
@@ -2096,7 +2098,7 @@ function Photo({ src, species, breed, big }) {
       {src ? (
         <img className={cls} src={src} alt="" />
       ) : (
-        <div className={cls} style={{ color: "#B5A48A" }}>
+        <div className={cls} style={{ color: "#A08F76" }}>
           <svg viewBox="0 0 100 100" width="100%" height="100%" fill="currentColor" aria-hidden="true"
             dangerouslySetInnerHTML={{ __html: SIL[silhouetteFor(species, breed)] }} />
         </div>
