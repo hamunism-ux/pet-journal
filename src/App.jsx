@@ -48,6 +48,8 @@ import { loadPets, upsertPet, deletePet, loadLang, saveLang } from "./lib/db";
 
    v2.11：檢查按鈕改回深棕色（保留較大尺寸）；寵物檔案新增「主人 Email」（選填，資料庫加 owner_email 欄）。
 
+   v2.11.1：城市選項縮減為新加坡、楓丹白露、阿布達比、其他。
+
    資料存放：Supabase（見 src/lib/db.js、supabase/schema.sql）；語言偏好存 localStorage
 ------------------------------------------------------------------ */
 
@@ -780,18 +782,11 @@ const BREEDS = {
   },
 };
 
-/* 城市：存代碼，顯示時翻譯。順序：新加坡、台灣、亞洲鄰近城市、其他地區 */
+/* 城市：存代碼，顯示時翻譯 */
 const CITIES = {
   singapore: ["新加坡", "Singapore"],
-  taipei: ["台北", "Taipei"], newTaipei: ["新北", "New Taipei"], taoyuan: ["桃園", "Taoyuan"],
-  taichung: ["台中", "Taichung"], tainan: ["台南", "Tainan"], kaohsiung: ["高雄", "Kaohsiung"],
-  hongKong: ["香港", "Hong Kong"], macau: ["澳門", "Macau"],
-  kualaLumpur: ["吉隆坡", "Kuala Lumpur"], bangkok: ["曼谷", "Bangkok"], jakarta: ["雅加達", "Jakarta"], manila: ["馬尼拉", "Manila"],
-  tokyo: ["東京", "Tokyo"], osaka: ["大阪", "Osaka"], seoul: ["首爾", "Seoul"],
-  shanghai: ["上海", "Shanghai"], beijing: ["北京", "Beijing"], shenzhen: ["深圳", "Shenzhen"],
-  sydney: ["雪梨", "Sydney"], melbourne: ["墨爾本", "Melbourne"],
-  london: ["倫敦", "London"], newYork: ["紐約", "New York"], losAngeles: ["洛杉磯", "Los Angeles"],
-  toronto: ["多倫多", "Toronto"], vancouver: ["溫哥華", "Vancouver"],
+  fontainebleau: ["楓丹白露", "Fontainebleau"],
+  abuDhabi: ["阿布達比", "Abu Dhabi"],
   other: ["其他", "Other"],
 };
 const cityLabel = (k, lang) => (CITIES[k] ? CITIES[k][li(lang)] : k || "");
