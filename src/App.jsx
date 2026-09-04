@@ -72,6 +72,8 @@ import { loadPets, upsertPet, deletePet, loadLang, saveLang } from "./lib/db";
 
    v3.7：条码／手动输入也可一键让 AI 综合判断（文字模式）；AI 理由同时回传中英文，依介面语言显示。
 
+   v3.7.1：有 AI 判断时不再显示规则比对；AI 综合判断区块改粗框醒目样式。
+
    资料存放：Supabase（见 src/lib/db.js、supabase/schema.sql）；语言偏好存 localStorage
 ------------------------------------------------------------------ */
 
@@ -353,6 +355,13 @@ img.pp-photo{display:block;}
 .pp-wait{display:flex;align-items:center;gap:10px;margin-top:12px;font-size:12.5px;color:var(--ink-soft);}
 .pp-wait .pp-spin{border-color:rgba(59,48,36,.2);border-top-color:var(--ink);margin:0;}
 
+/* ---- AI 综合判断：粗框 ---- */
+.pp-ai{border:3px solid var(--ink);box-shadow:0 5px 14px rgba(59,48,36,.24);}
+.pp-ai .pp-annex-h{padding-top:18px;}
+.pp-ai .pp-h{font-size:17px;background:linear-gradient(transparent 58%,rgba(229,193,94,.75) 58%);}
+.pp-ai .pp-verdict{font-size:18px;padding:11px 22px;margin-top:10px;}
+.pp-ai .pp-res{font-size:14.5px;line-height:1.85;padding-top:12px;}
+
 /* ---- 检查商品 ---- */
 .pp-tier{margin:0 16px 18px;padding:16px 16px 14px;}
 .pp-tier-h{font-family:var(--font-round);font-size:15px;font-weight:700;margin:0 0 4px;}
@@ -536,7 +545,7 @@ const STR = {
     check: {
       nav: "CHECK",
       title: (n) => `帮 ${n} 检查一款商品`,
-      criteria: "先提供商品资讯（拍照、条码或手动），再让 AI 综合牠的资料判断；下方另附过敏原与年龄段的成分比对。",
+      criteria: "先提供商品资讯（拍照、条码或手动），再让 AI 综合牠的资料判断。",
       petLine: (stage, allergies) => `牠现在是${stage}，过敏原：${allergies}`,
       tier0: "① 拍摄商品外观",
       tier0d: "拍下包装正面（品牌、名称清楚）。AI 辨识商品、查成分，再综合牠的资料判断。",
@@ -584,7 +593,7 @@ const STR = {
       sourceLabel: "来源：",
       sources: { photo: "AI 辨识照片＋网络查询（请核对）", opff: "Open Pet Food Facts", manual: "手动输入" },
       clear: "清除重来",
-      resultTitle: "成分比对",
+      resultTitle: "快速比对（AI 判断前）",
       verdict: { bad: "不建议", ok: "可以考虑", stageMismatch: "年龄段不符", stageUnknown: "过敏原没问题，年龄段不确定" },
       allergenHit: (list) => `含有牠的过敏原：${list}`,
       allergenNone: "没有发现牠的过敏原",
@@ -781,7 +790,7 @@ const STR = {
     check: {
       nav: "CHECK",
       title: (n) => `Check a product for ${n}`,
-      criteria: "Provide the product (photo, barcode or manual entry), then let AI judge it against the whole profile. An allergen and life-stage check is shown below as well.",
+      criteria: "Provide the product (photo, barcode or manual entry), then let AI judge it against the whole profile.",
       petLine: (stage, allergies) => `They are ${stage}. Allergies: ${allergies}`,
       tier0: "① Photo of the product",
       tier0d: "Photograph the front of the pack (brand and name visible). AI identifies it, finds the ingredients and judges against this pet.",
@@ -829,7 +838,7 @@ const STR = {
       sourceLabel: "Source: ",
       sources: { photo: "AI photo ID + web lookup (please verify)", opff: "Open Pet Food Facts", manual: "Entered manually" },
       clear: "Start over",
-      resultTitle: "Ingredient check",
+      resultTitle: "Quick check (before AI)",
       verdict: { bad: "Not recommended", ok: "Worth considering", stageMismatch: "Life stage mismatch", stageUnknown: "Allergens OK, life stage unclear" },
       allergenHit: (list) => `Contains their allergens: ${list}`,
       allergenNone: "None of their allergens found",
@@ -1919,7 +1928,7 @@ function CheckProduct({ pet, onBack }) {
       )}
 
       {prod && ai && (
-        <div className="paper pp-annex" style={{ paddingBottom: 6 }}>
+        <div className="paper pp-annex pp-ai" style={{ paddingBottom: 6 }}>
           <span className="tape c" />
           <div className="pp-annex-h"><span className="pp-h">{C.aiTitle}</span><em>AI</em></div>
           <div className={`pp-verdict ${ai.verdict === "bad" ? "bad" : ai.verdict === "ok" ? "" : "mid"}`}>{C.aiVerdict[ai.verdict]}</div>
@@ -1986,7 +1995,7 @@ function CheckProduct({ pet, onBack }) {
         </div>
       )}
 
-      {result && (
+      {result && !ai && (
         <div className="paper pp-annex" style={{ paddingBottom: 6 }}>
           <span className="tape b" />
           <div className="pp-annex-h"><span className="pp-h">{C.resultTitle}</span></div>
