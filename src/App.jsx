@@ -93,6 +93,7 @@ import { loadPets, upsertPet, deletePet, loadLang, saveLang } from "./lib/db";
 
    v3.10：必填改为名字、物种、品种、性别、生日、体重、结扎、城市；所有栏位标题粗体；生日精度到月份（存 YYYY-MM-01）。
 
+   v4.0.5：玩伴页等待 AI 时显示转圈；首页新增按钮移到左下角（避开 Netlify 标签）。
    v4.0.4：玩伴页顶部的大照片只在等待结果时显示，结果出来（有最佳配对）后隐藏，避免与 ♥ 配对卡重复。
    v4.0.3：玩伴页顶部显示自己宠物的照片；最佳配对卡片以「我的照片 ♥ 对方照片」并排呈现。
    v4.0.2：配对理由篇幅加倍；拿掉「分数与理由由 AI 产生」说明；分数标签改为「AI 配对 x 分」。
@@ -240,7 +241,7 @@ img.pp-photo{display:block;}
   padding:13px 22px;border-radius:10px;font-size:14px;width:100%;
 }
 .pp-fab{
-  position:fixed;right:18px;bottom:24px;
+  position:fixed;left:18px;bottom:24px;
   width:58px;height:58px;border-radius:50%;
   background:#fff;color:var(--ink);border:none;
   font-size:28px;line-height:1;font-family:var(--font-round);
@@ -558,7 +559,7 @@ const STR = {
       title: (n) => `为 ${n} 寻找附近的玩伴`,
       intro: (city, sp) => `列出同样在${city}、也是${sp}的其他宠物，依年龄阶段、体型、结扎状态挑出最合适的一位。`,
       noCity: "还没设定所在城市。到「编辑」把城市填上，就能找同城的玩伴。",
-      loading: "寻找中…",
+      loading: "AI 正在为牠配对…",
       none: (city) => `${city}目前还没有其他宠物登记。`,
       best: "最佳配对",
       why: "配对理由",
@@ -812,7 +813,7 @@ const STR = {
       title: (n) => `Playmates near ${n}`,
       intro: (city, sp) => `Other ${sp} registered in ${city}, with the best match picked by life stage, size and neuter status.`,
       noCity: "No city set yet. Tap Edit and choose a city to find playmates nearby.",
-      loading: "Looking…",
+      loading: "AI is matching…",
       none: (city) => `No other pets are registered in ${city} yet.`,
       best: "Best match",
       why: "Why this match",
@@ -2174,7 +2175,9 @@ function Playmates({ pet, allPets, onBack }) {
       </div>
 
       {pet.city && err && <div className="pp-notice">{M.fail}</div>}
-      {pet.city && !err && rows === null && <div className="pp-notice">{M.loading}</div>}
+      {pet.city && !err && rows === null && (
+        <div className="pp-notice"><span className="pp-spin" style={{ width: 22, height: 22, borderWidth: 3, borderColor: "rgba(59,48,36,.2)", borderTopColor: "var(--ink)", marginRight: 10 }} />{M.loading}</div>
+      )}
       {pet.city && !err && rows && rows.length === 0 && <div className="pp-notice">{M.none(city)}</div>}
 
       {rows && rows.map((o) => {
