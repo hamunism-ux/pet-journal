@@ -57,6 +57,8 @@ import { loadPets, upsertPet, deletePet, loadLang, saveLang } from "./lib/db";
 
    v3.2：推薦商品理由與養育建議全部改短、改白話；免責聲明也縮短。
 
+   v3.3：移除首頁帳號狀態列與 SINCE 日期列；首頁底部顯示全站統計（主人數＝不重複 owner_id、寵物數＝筆數）。
+
    資料存放：Supabase（見 src/lib/db.js、supabase/schema.sql）；語言偏好存 localStorage
 ------------------------------------------------------------------ */
 
@@ -140,6 +142,7 @@ const CSS = `
 .pp-alert.warn{background:#F4DADF;}
 
 .pp-body{padding:20px 16px 110px;}
+.pp-stats{text-align:center;font-family:var(--font-type);font-size:11px;letter-spacing:.1em;color:var(--ink-soft);padding:14px 16px 0;line-height:1.9;}
 
 /* ---- 相簿卡片 ---- */
 .pp-card{
@@ -147,7 +150,7 @@ const CSS = `
   background:var(--card);border:none;border-radius:3px;
   box-shadow:0 2px 6px rgba(59,48,36,.16);margin:0 0 20px;
 }
-.pp-card-in{display:flex;gap:16px;padding:18px 16px 12px;}
+.pp-card-in{display:flex;gap:16px;padding:18px 16px 18px;}
 
 /* ---- 相片 + 相角 ---- */
 .pp-photo-wrap{position:relative;flex:0 0 auto;}
@@ -167,10 +170,6 @@ img.pp-photo{display:block;}
 
 .pp-name{font-family:var(--font-round);font-size:20px;font-weight:700;margin:4px 0 0;}
 .pp-meta{font-size:12.5px;color:var(--ink-soft);margin-top:6px;line-height:1.7;}
-.pp-type{
-  font-family:var(--font-type);font-size:10.5px;letter-spacing:.12em;color:var(--ink-soft);
-  padding:8px 16px 10px;border-top:1px dotted var(--rule);
-}
 
 /* ---- 空狀態 ---- */
 .pp-empty{text-align:center;padding:54px 24px;}
@@ -378,11 +377,11 @@ const STR = {
       logout: "登出",
       notConfigured: "還沒填資料庫連線。請打開 src/config.js 貼上 Supabase 的 URL 和 anon key，再重新上傳。",
       anonFail: "自動登入失敗。請到 Supabase 後台 Authentication → Sign In / Providers，打開「Allow anonymous sign-ins」。",
-      guest: "訪客帳號 · 資料已存在雲端",
       loadFail: "讀取資料失敗，請重新整理再試。",
     },
     issued: (n) => `${n} 位家庭成員`,
     notIssued: "還沒有家庭成員",
+    stats: (o, p) => `本寵物世界已有 ${o} 位主人加入，共 ${p} 隻寵物`,
     storageWarn: "資料暫時無法儲存，這次的修改在重新整理後可能會消失。",
     empty1: "這本手帳還是空的。",
     empty2: "先把牠貼上來吧。",
@@ -395,7 +394,6 @@ const STR = {
     edit: "編輯",
     cancelNav: "← 取消",
     join: "、",
-    est: "SINCE",
     speciesName: { dog: "犬", cat: "貓" },
     rows: {
       species: "物種", gender: "性別", birthday: "生日", weight: "體重", neutered: "結紮",
@@ -607,11 +605,11 @@ const STR = {
       logout: "Sign out",
       notConfigured: "Database connection isn't set. Open src/config.js, paste your Supabase URL and anon key, and upload again.",
       anonFail: "Automatic sign-in failed. In Supabase go to Authentication → Sign In / Providers and enable \"Allow anonymous sign-ins\".",
-      guest: "Guest account · saved in the cloud",
       loadFail: "Couldn't load your data. Please refresh and try again.",
     },
     issued: (n) => `${n} family member${n === 1 ? "" : "s"}`,
     notIssued: "No family members yet",
+    stats: (o, p) => `${o} owner${o === 1 ? "" : "s"} have joined this pet world, with ${p} pet${p === 1 ? "" : "s"}`,
     storageWarn: "Data can't be saved right now. Changes may be lost after a refresh.",
     empty1: "This journal is still empty.",
     empty2: "Add your first family member.",
@@ -624,7 +622,6 @@ const STR = {
     edit: "Edit",
     cancelNav: "← Cancel",
     join: ", ",
-    est: "SINCE",
     speciesName: { dog: "Dog", cat: "Cat" },
     rows: {
       species: "Species", gender: "Sex", birthday: "Date of birth", weight: "Weight", neutered: "Neutered",
@@ -1177,6 +1174,14 @@ async function loadPlaymates(pet) {
   }));
 }
 
+/* 全站統計：問資料庫的 journal_stats()（不重複的 owner_id 數、寵物筆數），見 migrate-v5-stats.sql */
+async function loadStats() {
+  const { data, error } = await supabase.rpc("journal_stats");
+  if (error) throw error;
+  const row = Array.isArray(data) ? data[0] : data;
+  return { owners: Number(row?.owners || 0), pets: Number(row?.pets || 0) };
+}
+
 /* 檢查商品：只看過敏原與年齡段 */
 function checkProduct(pet, prod) {
   const allergies = pet.allergies || [];
@@ -1418,7 +1423,7 @@ export default function PetJournal() {
   else if (view.name === "mates" && current) body = <Playmates pet={current} allPets={pets} onBack={() => setView({ name: "detail", id: current.id })} />;
   else if (view.name === "check" && current) body = <CheckProduct pet={current} onBack={() => setView({ name: "detail", id: current.id })} />;
   else if (view.name === "detail" && current) body = <Detail pet={current} onBack={() => setView({ name: "list" })} onEdit={() => setView({ name: "form", id: current.id })} onCheck={() => setView({ name: "check", id: current.id })} onMates={() => setView({ name: "mates", id: current.id })} onDelete={() => removePet(current.id)} />;
-  else body = <List pets={pets} storageOk={storageOk} email={session.user.is_anonymous ? L.auth.guest : session.user.email} onLogout={session.user.is_anonymous ? null : logout} onOpen={(id) => setView({ name: "detail", id })} onAdd={() => setView({ name: "form" })} />;
+  else body = <List pets={pets} storageOk={storageOk} onLogout={session.user.is_anonymous ? null : logout} onOpen={(id) => setView({ name: "detail", id })} onAdd={() => setView({ name: "form" })} />;
 
   return (
     <LangCtx.Provider value={{ lang, L, setLang }}>
@@ -1492,8 +1497,14 @@ function LangToggle() {
 
 /* ---------------- 列表頁 ---------------- */
 
-function List({ pets, onOpen, onAdd, storageOk, email, onLogout }) {
+function List({ pets, onOpen, onAdd, storageOk, onLogout }) {
   const { lang, L } = useL();
+  const [stats, setStats] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    loadStats(pets).then((st) => { if (alive) setStats(st); }).catch(() => {});
+    return () => { alive = false; };
+  }, [pets.length]);
 
   return (
     <>
@@ -1505,7 +1516,6 @@ function List({ pets, onOpen, onAdd, storageOk, email, onLogout }) {
         </div>
         <PawSticker />
         <div className="pp-count">{pets.length > 0 ? L.issued(pets.length) : L.notIssued}</div>
-        <div className="pp-count" style={{ marginTop: 6 }}>{email}</div>
         {onLogout && <button className="pp-link" onClick={onLogout}>{L.auth.logout}</button>}
         <LangToggle />
       </header>
@@ -1533,11 +1543,12 @@ function List({ pets, onOpen, onAdd, storageOk, email, onLogout }) {
                   </div>
                 </div>
               </div>
-              <div className="pp-type">{L.est} {(p.birthday || "").replace(/-/g, ".")}</div>
             </button>
           ))
         )}
       </div>
+
+      {stats && <div className="pp-stats">{L.stats(stats.owners, stats.pets)}</div>}
 
       {pets.length > 0 && <button className="pp-fab" onClick={onAdd} aria-label={L.addPet}>＋</button>}
     </>
@@ -1583,7 +1594,6 @@ function Detail({ pet, onBack, onEdit, onCheck, onMates, onDelete }) {
           <Row k={L.rows.ownerEmail} v={pet.ownerEmail || "—"} />
           {pet.note && <Row k={L.rows.note} v={pet.note} />}
         </dl>
-        <div className="pp-type">{L.est} {(pet.birthday || "").replace(/-/g, ".")}</div>
       </div>
 
       <div style={{ padding: "0 16px 20px" }}>
