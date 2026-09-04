@@ -53,6 +53,8 @@ import { loadPets, upsertPet, deletePet, loadLang, saveLang } from "./lib/db";
    v3.1：新增「尋找附近的玩伴」：同城同物種的其他寵物清單，依年齡階段／體型／結紮挑最佳配對並附理由，
       只有最佳配對顯示主人 Email。Netlify 版透過資料庫函式 find_playmates()（見 supabase/migrate-v4-playmates.sql）。
 
+   v3.1.1：城市名稱前加國旗 emoji（新加坡 🇸🇬、楓丹白露 🇫🇷、阿布達比 🇦🇪、其他 🌍）。
+
    資料存放：Supabase（見 src/lib/db.js、supabase/schema.sql）；語言偏好存 localStorage
 ------------------------------------------------------------------ */
 
@@ -847,12 +849,13 @@ const BREEDS = {
 
 /* 城市：存代碼，顯示時翻譯 */
 const CITIES = {
-  singapore: ["新加坡", "Singapore"],
-  fontainebleau: ["楓丹白露", "Fontainebleau"],
-  abuDhabi: ["阿布達比", "Abu Dhabi"],
-  other: ["其他", "Other"],
+  singapore: ["新加坡", "Singapore", "🇸🇬"],
+  fontainebleau: ["楓丹白露", "Fontainebleau", "🇫🇷"],
+  abuDhabi: ["阿布達比", "Abu Dhabi", "🇦🇪"],
+  other: ["其他", "Other", "🌍"],
 };
-const cityLabel = (k, lang) => (CITIES[k] ? CITIES[k][li(lang)] : k || "");
+/* 顯示用：國旗 + 城市名，例如「🇸🇬 新加坡」 */
+const cityLabel = (k, lang) => (CITIES[k] ? `${CITIES[k][2]} ${CITIES[k][li(lang)]}` : k || "");
 
 const ING = {
   chicken: ["雞肉", "Chicken"], brownRice: ["糙米", "Brown rice"], oats: ["燕麥", "Oats"],
@@ -2018,7 +2021,7 @@ function PetForm({ pet, onSave, onCancel }) {
             <label className="pp-label" htmlFor="ct">{F.city}</label>
             <select id="ct" className="pp-select" value={f.city || ""} onChange={(e) => set("city", e.target.value)}>
               <option value="">{F.pick}</option>
-              {Object.keys(CITIES).map((k) => <option key={k} value={k}>{CITIES[k][li(lang)]}</option>)}
+              {Object.keys(CITIES).map((k) => <option key={k} value={k}>{cityLabel(k, lang)}</option>)}
             </select>
             <div className="pp-hint">{F.cityHint}</div>
           </div>
