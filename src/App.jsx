@@ -93,6 +93,7 @@ import { loadPets, upsertPet, deletePet, loadLang, saveLang } from "./lib/db";
 
    v3.10：必填改为名字、物种、品种、性别、生日、体重、结扎、城市；所有栏位标题粗体；生日精度到月份（存 YYYY-MM-01）。
 
+   v4.1.1：未选中候选的优点／顾虑加长约四成；配对页说明改为「依宠物综合资料挑出最佳配对」。
    v4.1：未选中的候选也显示 AI 给的一句优点、一句顾虑（极精简）。
    v4.0.6：首页「＋」按钮回到右侧，往上抬到 Netlify 标签上方（避开 iPhone 底部手势区）。
    v4.0.5：玩伴页等待 AI 时显示转圈；首页新增按钮移到左下角（避开 Netlify 标签）。
@@ -562,7 +563,7 @@ const STR = {
       btn: "寻找附近的玩伴",
       nav: "PLAYMATES",
       title: (n) => `为 ${n} 寻找附近的玩伴`,
-      intro: (city, sp) => `列出同样在${city}、也是${sp}的其他宠物，依年龄阶段、体型、结扎状态挑出最合适的一位。`,
+      intro: (city, sp) => `列出同样在${city}的其他${sp}，依宠物综合资料挑出最佳配对。`,
       noCity: "还没设定所在城市。到「编辑」把城市填上，就能找同城的玩伴。",
       loading: "AI 正在为牠配对…",
       none: (city) => `${city}目前还没有其他宠物登记。`,
@@ -816,7 +817,7 @@ const STR = {
       btn: "Find playmates nearby",
       nav: "PLAYMATES",
       title: (n) => `Playmates near ${n}`,
-      intro: (city, sp) => `Other ${sp} registered in ${city}, with the best match picked by life stage, size and neuter status.`,
+      intro: (city, sp) => `Other ${sp}s in ${city}, with the best match chosen from each pet's full profile.`,
       noCity: "No city set yet. Tap Edit and choose a city to find playmates nearby.",
       loading: "AI is matching…",
       none: (city) => `No other pets are registered in ${city} yet.`,
@@ -1300,7 +1301,7 @@ Score each candidate 0-100 as a playmate for MY PET. Consider: life stage compat
 Pick the single best candidate.
 
 Return ONLY a JSON object, no markdown, no explanation:
-{"best_id":"<id>","scores":[{"id":"<id>","score":0-100,"pro":{"zh":"one phrase, under 12 characters, the main point in favour","en":"same, under 6 words"},"con":{"zh":"one phrase, under 12 characters, the main concern (or empty string if none)","en":"same, under 6 words"}}],"reasons":{"zh":["3 bullet points in Simplified Chinese, each one full sentence of 25-40 characters, explaining concretely why best_id fits (mention the actual ages, weights or traits)"],"en":["the same 3 points in English, each one sentence of 15-25 words"]}}`;
+{"best_id":"<id>","scores":[{"id":"<id>","score":0-100,"pro":{"zh":"one short sentence, 14-18 characters, the main point in favour","en":"same, 8-10 words"},"con":{"zh":"one short sentence, 14-18 characters, the main concern (or empty string if none)","en":"same, 8-10 words"}}],"reasons":{"zh":["3 bullet points in Simplified Chinese, each one full sentence of 25-40 characters, explaining concretely why best_id fits (mention the actual ages, weights or traits)"],"en":["the same 3 points in English, each one sentence of 15-25 words"]}}`;
 }
 /* 把 AI 的打分套回候选名单：最佳配对排第一、只有它带 Email 与理由 */
 function applyMatch(cands, ai) {
