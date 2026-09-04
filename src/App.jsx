@@ -50,6 +50,9 @@ import { loadPets, upsertPet, deletePet, loadLang, saveLang } from "./lib/db";
 
    v2.11.1：城市選項縮減為新加坡、楓丹白露、阿布達比、其他。
 
+   v3.1：新增「尋找附近的玩伴」：同城同物種的其他寵物清單，依年齡階段／體型／結紮挑最佳配對並附理由，
+      只有最佳配對顯示主人 Email。Netlify 版透過資料庫函式 find_playmates()（見 supabase/migrate-v4-playmates.sql）。
+
    資料存放：Supabase（見 src/lib/db.js、supabase/schema.sql）；語言偏好存 localStorage
 ------------------------------------------------------------------ */
 
@@ -284,6 +287,16 @@ img.pp-photo{display:block;}
 .pp-range-scale{display:flex;justify-content:space-between;font-family:var(--font-type);font-size:10px;
   color:var(--ink-soft);letter-spacing:.06em;margin-top:-2px;}
 
+/* ---- 玩伴清單 ---- */
+.pp-mate{position:relative;background:var(--card);border-radius:3px;box-shadow:0 2px 6px rgba(59,48,36,.16);margin:0 16px 16px;}
+.pp-mate.match{background:#FFF6DA;box-shadow:0 0 0 3px var(--tape-c),0 4px 12px rgba(59,48,36,.22);}
+.pp-mate-badge{position:absolute;right:14px;top:-10px;background:var(--berry);color:#fff;font-family:var(--font-round);
+  font-size:11px;font-weight:700;padding:5px 12px;border-radius:999px;box-shadow:0 2px 4px rgba(59,48,36,.2);letter-spacing:.04em;}
+.pp-mate-why{padding:0 16px 12px;}
+.pp-mate-contact{margin:0 16px 14px;padding:12px 14px;background:#fff;border-radius:8px;font-size:14px;word-break:break-all;
+  border:1px dashed var(--ink-soft);}
+.pp-mate-contact .k{font-size:11px;color:var(--ink-soft);font-family:var(--font-round);margin-bottom:4px;}
+
 /* ---- 表單 ---- */
 .pp-form{padding:12px 16px 40px;}
 .pp-field{margin-bottom:18px;}
@@ -472,6 +485,31 @@ const STR = {
         soSenior: "熟齡貓通常偏好安靜穩定的環境，引入活潑幼貓容易造成長期壓力。",
       },
       sources: "參考：AAHA 犬貓生命階段照護指引、WSAVA 疫苗指引、AVSAB 幼犬社會化立場聲明、International Cat Care 環境需求指引。以上為依基本資料自動產生的一般性建議，實際狀況請以獸醫診斷為準。",
+    },
+    mates: {
+      btn: "尋找附近的玩伴",
+      nav: "PLAYMATES",
+      title: (n) => `為 ${n} 尋找附近的玩伴`,
+      intro: (city, sp) => `列出同樣在${city}、也是${sp}的其他寵物，依年齡階段、體型、結紮狀態挑出最合適的一位。`,
+      noCity: "還沒設定所在城市。到「編輯」把城市填上，就能找同城的玩伴。",
+      loading: "尋找中…",
+      none: (city) => `${city}目前還沒有其他寵物登記。`,
+      best: "最佳配對",
+      why: "配對理由",
+      contact: "主人 Email",
+      noEmail: "主人沒有留 Email",
+      catNote: "貓是領域性動物，不建議直接見面；這裡的配對比較適合用來和飼主交流養貓經驗。",
+      fail: "讀取失敗，請稍後再試。",
+      r: {
+        sameStage: (s) => `年齡階段相同，都是${s}`,
+        nearStage: "年齡階段相近",
+        sizeClose: (a, b) => `體型相近（${a} 與 ${b} 公斤）`,
+        sizeOk: "體型差距在可接受範圍",
+        sizeUnknown: "有一方體重未填，無法比對體型",
+        bothNeutered: "都已結紮，互動通常較穩定",
+        intactMales: "兩隻都是未結紮公犬，初次見面要特別留意",
+        only: "目前同城只有這一位",
+      },
     },
     check: {
       nav: "CHECK",
@@ -676,6 +714,31 @@ const STR = {
         soSenior: "Senior cats usually prefer a quiet, stable home; a lively kitten can cause long-term stress.",
       },
       sources: "Based on: AAHA canine and feline life stage guidelines, WSAVA vaccination guidelines, AVSAB Position Statement on Puppy Socialization, International Cat Care environmental needs guidelines. General advice generated from the profile; always go by your vet's assessment.",
+    },
+    mates: {
+      btn: "Find playmates nearby",
+      nav: "PLAYMATES",
+      title: (n) => `Playmates near ${n}`,
+      intro: (city, sp) => `Other ${sp} registered in ${city}, with the best match picked by life stage, size and neuter status.`,
+      noCity: "No city set yet. Tap Edit and choose a city to find playmates nearby.",
+      loading: "Looking…",
+      none: (city) => `No other pets are registered in ${city} yet.`,
+      best: "Best match",
+      why: "Why this match",
+      contact: "Owner email",
+      noEmail: "The owner didn't leave an email",
+      catNote: "Cats are territorial and direct meetings aren't recommended; use this match to swap cat-care tips with the owner instead.",
+      fail: "Couldn't load. Please try again later.",
+      r: {
+        sameStage: (s) => `Same life stage: both ${s}`,
+        nearStage: "Neighbouring life stages",
+        sizeClose: (a, b) => `Similar size (${a} vs ${b} kg)`,
+        sizeOk: "Size difference is within a reasonable range",
+        sizeUnknown: "One weight is missing, so size can't be compared",
+        bothNeutered: "Both neutered, which usually makes play calmer",
+        intactMales: "Both are intact males; take extra care at the first meeting",
+        only: "The only other one in this city right now",
+      },
     },
     check: {
       nav: "CHECK",
@@ -1063,6 +1126,52 @@ function careAdvice(pet, L, lang) {
   return out;
 }
 
+/* ---- 玩伴配對：年齡階段、體型、結紮 ----
+   分數規則和資料庫的 find_playmates() 完全相同，改一邊要記得改另一邊 */
+function stageN(birthday) {
+  const a = ageParts(birthday);
+  const m = a ? a.y * 12 + a.m : 36;
+  return m < 12 ? 0 : m <= 84 ? 1 : 2;
+}
+function playmateScore(me, o) {
+  let s = 0;
+  const sm = stageN(me.birthday), so = stageN(o.birthday);
+  if (sm === so) s += 3; else if (Math.abs(sm - so) === 1) s += 1;
+  const wm = Number(me.weightKg) || 0, wo = Number(o.weightKg) || 0;
+  if (!wm || !wo) s += 1;
+  else { const r = Math.max(wm, wo) / Math.min(wm, wo); if (r <= 1.5) s += 3; else if (r <= 2.5) s += 1; }
+  if (me.neutered && o.neutered) s += 1;
+  if (!me.neutered && !o.neutered && me.gender === "male" && o.gender === "male") s -= 2;
+  return s;
+}
+function playmateReasons(me, o, L, onlyOne) {
+  const R = L.mates.r;
+  const out = [];
+  const sm = stageN(me.birthday), so = stageN(o.birthday);
+  const stageKey = ["young", "adult", "senior"][sm];
+  if (sm === so) out.push(R.sameStage(L.stage[stageKey][me.species]));
+  else if (Math.abs(sm - so) === 1) out.push(R.nearStage);
+  const wm = Number(me.weightKg) || 0, wo = Number(o.weightKg) || 0;
+  if (!wm || !wo) out.push(R.sizeUnknown);
+  else { const r = Math.max(wm, wo) / Math.min(wm, wo); if (r <= 1.5) out.push(R.sizeClose(wm, wo)); else if (r <= 2.5) out.push(R.sizeOk); }
+  if (me.neutered && o.neutered) out.push(R.bothNeutered);
+  if (!me.neutered && !o.neutered && me.gender === "male" && o.gender === "male") out.push(R.intactMales);
+  if (onlyOne) out.push(R.only);
+  return out;
+}
+
+/* Netlify 版：交給資料庫的 find_playmates()。它只回傳同城、同物種、別人的寵物，
+   而且只有最佳配對那一筆才附主人 Email，其他人的 Email 根本不會離開資料庫。 */
+async function loadPlaymates(pet) {
+  const { data, error } = await supabase.rpc("find_playmates", { p_pet_id: pet.id });
+  if (error) throw error;
+  return (data || []).map((r) => ({
+    id: r.id, name: r.name, species: r.species, breed: r.breed || "", gender: r.gender || "", birthday: r.birthday || "",
+    weightKg: r.weight_kg == null ? "" : Number(r.weight_kg), neutered: !!r.neutered, city: r.city || "", photo: r.photo || "",
+    score: r.score, isMatch: !!r.is_match, ownerEmail: r.owner_email || "",
+  }));
+}
+
 /* 檢查商品：只看過敏原與年齡段 */
 function checkProduct(pet, prod) {
   const allergies = pet.allergies || [];
@@ -1301,8 +1410,9 @@ export default function PetJournal() {
     : <Login />;
   else if (loadErr) body = <div className="pp-notice">{L.auth.loadFail}</div>;
   else if (view.name === "form") body = <PetForm pet={current} onCancel={() => setView(current ? { name: "detail", id: current.id } : { name: "list" })} onSave={savePet} />;
+  else if (view.name === "mates" && current) body = <Playmates pet={current} allPets={pets} onBack={() => setView({ name: "detail", id: current.id })} />;
   else if (view.name === "check" && current) body = <CheckProduct pet={current} onBack={() => setView({ name: "detail", id: current.id })} />;
-  else if (view.name === "detail" && current) body = <Detail pet={current} onBack={() => setView({ name: "list" })} onEdit={() => setView({ name: "form", id: current.id })} onCheck={() => setView({ name: "check", id: current.id })} onDelete={() => removePet(current.id)} />;
+  else if (view.name === "detail" && current) body = <Detail pet={current} onBack={() => setView({ name: "list" })} onEdit={() => setView({ name: "form", id: current.id })} onCheck={() => setView({ name: "check", id: current.id })} onMates={() => setView({ name: "mates", id: current.id })} onDelete={() => removePet(current.id)} />;
   else body = <List pets={pets} storageOk={storageOk} email={session.user.is_anonymous ? L.auth.guest : session.user.email} onLogout={session.user.is_anonymous ? null : logout} onOpen={(id) => setView({ name: "detail", id })} onAdd={() => setView({ name: "form" })} />;
 
   return (
@@ -1431,7 +1541,7 @@ function List({ pets, onOpen, onAdd, storageOk, email, onLogout }) {
 
 /* ---------------- 詳細頁 ---------------- */
 
-function Detail({ pet, onBack, onEdit, onCheck, onDelete }) {
+function Detail({ pet, onBack, onEdit, onCheck, onMates, onDelete }) {
   const { lang, L } = useL();
   const [confirm, setConfirm] = useState(false);
   const advice = foodAdvice(pet, L, lang);
@@ -1473,6 +1583,7 @@ function Detail({ pet, onBack, onEdit, onCheck, onDelete }) {
 
       <div style={{ padding: "0 16px 20px" }}>
         <button className="pp-btn-check" onClick={onCheck}>{L.checkBtn}</button>
+        <button className="pp-btn-check" style={{ marginTop: 10 }} onClick={onMates}>{L.mates.btn}</button>
       </div>
 
       <div className="paper pp-annex">
@@ -1674,6 +1785,78 @@ function CheckProduct({ pet, onBack }) {
           <div className="pp-note">{C.resultNote}</div>
         </div>
       )}
+      <div style={{ height: 40 }} />
+    </>
+  );
+}
+
+/* ---------------- 尋找附近的玩伴 ---------------- */
+
+function Playmates({ pet, allPets, onBack }) {
+  const { lang, L } = useL();
+  const M = L.mates;
+  const [rows, setRows] = useState(null);
+  const [err, setErr] = useState(false);
+
+  useEffect(() => {
+    if (!pet.city) { setRows([]); return; }
+    let alive = true;
+    loadPlaymates(pet, allPets).then((r) => { if (alive) setRows(r); }).catch(() => { if (alive) setErr(true); });
+    return () => { alive = false; };
+  }, [pet.id, pet.city]);
+
+  const city = cityLabel(pet.city, lang);
+
+  return (
+    <>
+      <nav className="pp-nav">
+        <button onClick={onBack}>{L.back}</button>
+        <span>{M.nav}</span>
+        <div className="pp-nav-right"><LangToggle /></div>
+      </nav>
+
+      <div className="paper pp-tier" style={{ marginTop: 18 }}>
+        <span className="tape c" />
+        <h2 className="pp-tier-h">{M.title(pet.name)}</h2>
+        <p className="pp-tier-d" style={{ marginBottom: 0 }}>{pet.city ? M.intro(city, L.speciesName[pet.species]) : M.noCity}</p>
+        {pet.species === "cat" && pet.city && <div className="pp-src">{M.catNote}</div>}
+      </div>
+
+      {pet.city && err && <div className="pp-notice">{M.fail}</div>}
+      {pet.city && !err && rows === null && <div className="pp-notice">{M.loading}</div>}
+      {pet.city && !err && rows && rows.length === 0 && <div className="pp-notice">{M.none(city)}</div>}
+
+      {rows && rows.map((o) => {
+        const reasons = o.isMatch ? playmateReasons(pet, o, L, rows.length === 1) : [];
+        return (
+          <div className={`pp-mate${o.isMatch ? " match" : ""}`} key={o.id}>
+            {o.isMatch && <div className="pp-mate-badge">{M.best}</div>}
+            <div className="pp-card-in">
+              <Photo src={o.photo} species={o.species} breed={o.breed} />
+              <div style={{ minWidth: 0 }}>
+                <h2 className="pp-name">{o.name}</h2>
+                <div className="pp-meta">
+                  {breedLabel(o.species, o.breed, lang) || L.speciesName[o.species]} · {ageText(o.birthday, L)}
+                  <br />
+                  {o.weightKg ? L.kg(o.weightKg) : L.weightUnknown}{o.gender ? ` · ${L.gender[o.gender]}` : ""}{o.neutered ? ` · ${L.neuteredTag}` : ""}
+                </div>
+              </div>
+            </div>
+            {o.isMatch && (
+              <>
+                <div className="pp-mate-why">
+                  <div className="pp-why-h">{M.why}</div>
+                  <ul className="pp-why">{reasons.map((r, i) => <li key={i}>{r}</li>)}</ul>
+                </div>
+                <div className="pp-mate-contact">
+                  <div className="k">{M.contact}</div>
+                  {o.ownerEmail ? <a href={`mailto:${o.ownerEmail}`} style={{ color: "var(--ink)" }}>{o.ownerEmail}</a> : <span style={{ color: "var(--ink-soft)" }}>{M.noEmail}</span>}
+                </div>
+              </>
+            )}
+          </div>
+        );
+      })}
       <div style={{ height: 40 }} />
     </>
   );
