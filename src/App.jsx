@@ -80,6 +80,8 @@ import { loadPets, upsertPet, deletePet, loadLang, saveLang } from "./lib/db";
 
    v3.8.2：换回 Sonnet 以提高辨识品质；理由 2–3 句、成分最多 15 项、输出上限 600、照片 1000px（预填 JSON 保留）。
 
+   v3.8.3：拿掉「预填 JSON 开头」（Sonnet 4.6 不支援预填，会直接报错）；失败时画面显示原始错误原因。
+
    资料存放：Supabase（见 src/lib/db.js、supabase/schema.sql）；语言偏好存 localStorage
 ------------------------------------------------------------------ */
 
@@ -1331,11 +1333,15 @@ async function foodCheckRequest(b64, prompt, system, opts = {}) {
   const { data, error } = await supabase.functions.invoke("check-food", { body: {
     image: b64 || null, prompt, system, web_search: !!opts.webSearch, max_searches: opts.maxSearches || 2,
     max_tokens: opts.maxTokens || (opts.webSearch ? 900 : 600),
-    prefill_json: !opts.webSearch, // 不上网时让后端预填「{」，模型直接输出 JSON 内容
   } });
-  if (error) throw error;
+  if (error) {
+    /* supabase.functions.invoke 把后端的错误内容藏在 context 里，尽量挖出来给画面看 */
+    let detail = error.message || String(error);
+    try { const body = await error.context?.json?.(); if (body?.error) detail = body.error; } catch { /* 忽略 */ }
+    throw new Error(detail);
+  }
   if (!data || typeof data.text !== "string") throw new Error(data?.error || "no-text");
-  return data.prefilled ? "{" + data.text : data.text;
+  return data.text;
 }
 
 /* 检查商品：只看过敏原与年龄段 */
@@ -1823,6 +1829,7 @@ function CheckProduct({ pet, onBack }) {
   const [prod, setProd] = useState(null); // { name, ingredients, stage, source }
   const [picked, setPicked] = useState([]); // 手动输入时点选的成分 key
   const [ai, setAi] = useState(null); // 拍商品外观时 AI 的判断 { verdict, reasons, confidence, sources }
+  const [aiErr, setAiErr] = useState(""); // 失败时的原始原因，方便排查
   const frontCamRef = useRef(null);
   const frontFileRef = useRef(null);
   const ingText = prod ? (prod.source === "manual" ? combineIngredients(picked, prod.ingredients) : prod.ingredients) : "";
@@ -1837,7 +1844,8 @@ function CheckProduct({ pet, onBack }) {
       const r = last.kind === "photo" ? await identifyFoodWithAI(last.dataUrl, pet, L, true) : await judgeFoodWithAI(last.product, pet, L, true);
       if (last.kind === "photo") setProd({ name: r.name, ingredients: r.ingredients, stage: r.stage, source: "photo" });
       setAi({ verdict: r.verdict, reasons: r.reasons, confidence: r.confidence, sources: r.sources, searched: true });
-    } catch { setMsg(C.judgeFail); }
+      setAiErr("");
+    } catch (e) { setMsg(C.judgeFail); setAiErr(e?.message || String(e)); }
     setBusy("");
   }
   async function onJudge() {
@@ -1854,7 +1862,8 @@ function CheckProduct({ pet, onBack }) {
       if (prod.stage === "unknown" && r.stage !== "unknown") filled.stage = r.stage;
       setProd(filled);
       setAi({ verdict: r.verdict, reasons: r.reasons, confidence: r.confidence, sources: r.sources });
-    } catch { setMsg(C.judgeFail); }
+      setAiErr("");
+    } catch (e) { setMsg(C.judgeFail); setAiErr(e?.message || String(e)); }
     setBusy("");
   }
   async function onFrontPhoto(e) {
@@ -1866,7 +1875,8 @@ function CheckProduct({ pet, onBack }) {
       const r = await identifyFoodWithAI(dataUrl, pet, L);
       setProd({ name: r.name, ingredients: r.ingredients, stage: r.stage, source: "photo" });
       setAi({ verdict: r.verdict, reasons: r.reasons, confidence: r.confidence, sources: r.sources });
-    } catch { setMsg(C.photoFail); }
+      setAiErr("");
+    } catch (e) { setMsg(C.photoFail); setAiErr(e?.message || String(e)); }
     setBusy("");
   }
   const togglePick = (k) => { setPicked((p) => (p.includes(k) ? p.filter((x) => x !== k) : [...p, k])); setAi(null); };
@@ -1931,7 +1941,7 @@ function CheckProduct({ pet, onBack }) {
               <input ref={frontFileRef} type="file" accept="image/*" onChange={onFrontPhoto} style={{ display: "none" }} />
             </div>
             {busy === "food" && <div className="pp-wait"><span className="pp-spin" />{C.waitHint}</div>}
-            {msg === C.photoFail && <div className="pp-msg">{msg}</div>}
+            {msg === C.photoFail && <div className="pp-msg">{msg}{aiErr && <div className="pp-src" style={{ marginTop: 4, wordBreak: "break-all" }}>{aiErr}</div>}</div>}
           </div>
 
           <div className="paper pp-tier">
@@ -2029,10 +2039,10 @@ function CheckProduct({ pet, onBack }) {
                 {busy === "judge" ? <><span className="pp-spin" />{C.judging}</> : C.judgeBtn}
               </button>
               <div className="pp-hint">{C.judgeHint}</div>
-              {msg === C.judgeFail && <div className="pp-msg">{msg}</div>}
+              {msg === C.judgeFail && <div className="pp-msg">{msg}{aiErr && <div className="pp-src" style={{ marginTop: 4, wordBreak: "break-all" }}>{aiErr}</div>}</div>}
             </div>
           )}
-          <button className="pp-btn-ghost" onClick={() => { setProd(null); setPicked([]); setAi(null); setMsg(""); }}>{C.clear}</button>
+          <button className="pp-btn-ghost" onClick={() => { setProd(null); setPicked([]); setAi(null); setMsg(""); setAiErr(""); }}>{C.clear}</button>
         </div>
       )}
 
