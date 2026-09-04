@@ -84,6 +84,9 @@ import { loadPets, upsertPet, deletePet, loadLang, saveLang } from "./lib/db";
 
    v3.8.4：商品检查页顶部只留标题，拿掉说明小字与宠物状态行。
 
+   v3.9：建档／编辑选好照片后自动让 AI 辨识物种与品种并预选（已选品种时不覆盖）；按钮改为「重新辨识」。
+      Netlify 版的 AI 呼叫改走 Supabase Edge Function check-food，金钥只需设在 Supabase 一处。
+
    资料存放：Supabase（见 src/lib/db.js、supabase/schema.sql）；语言偏好存 localStorage
 ------------------------------------------------------------------ */
 
@@ -637,12 +640,13 @@ const STR = {
       errBirthday: "请填写生日，年龄与饲料建议需要用到。",
       errFuture: "生日不能是未来的日期。",
       errPhoto: "这张图片读不进来，换一张试试。",
-      guess: "让 AI 猜物种与品种",
+      guess: "让 AI 辨识物种与品种",
+      guessAgain: "重新辨识",
       guessing: "AI 辨识中…",
-      guessDone: (sp, br, conf) => `AI 猜是${sp}${br ? `・${br}` : ""}（把握${conf}）。已帮你选好，不对请直接改。`,
+      guessDone: (sp, br, conf) => `AI 认为是${sp}${br ? `・${br}` : ""}（把握${conf}），已自动选好。不对请直接改。`,
       guessNone: "AI 看不出照片里是狗还是猫，请自己选。",
       guessFail: "辨识失败，请自己选。",
-      guessHint: "只是帮你先选。米克斯和幼兽常会猜错，请以你知道的为准。",
+      guessHint: "选好照片会自动辨识并先选好。米克斯和幼兽常会看错，请以你知道的为准。",
       conf: { high: "高", medium: "中", low: "低" },
       save: "储存修改", issue: "贴进手帐", cancel: "取消",
     },
@@ -885,12 +889,13 @@ const STR = {
       errBirthday: "Please enter a date of birth. Age and food advice depend on it.",
       errFuture: "Date of birth can't be in the future.",
       errPhoto: "That image couldn't be read. Try another one.",
-      guess: "Let AI guess the species and breed",
+      guess: "Let AI identify the species and breed",
+      guessAgain: "Identify again",
       guessing: "AI is looking…",
       guessDone: (sp, br, conf) => `AI thinks this is a ${sp}${br ? ` (${br})` : ""}, ${conf} confidence. Selected for you; change it if it's wrong.`,
       guessNone: "AI couldn't tell whether this is a dog or a cat. Please choose.",
       guessFail: "Couldn't recognise the photo. Please choose.",
-      guessHint: "This only pre-selects. Mixed breeds and young animals are often misjudged; go with what you know.",
+      guessHint: "Runs automatically after you pick a photo and pre-selects. Mixed breeds and young animals are often misjudged; go with what you know.",
       conf: { high: "high", medium: "medium", low: "low" },
       save: "Save changes", issue: "Add to journal", cancel: "Cancel",
     },
@@ -1436,21 +1441,17 @@ Return ONLY a JSON object, no markdown, no explanation: {"barcode": string|null}
 Digits only, no spaces. Typically 13 digits (EAN-13), 12 (UPC-A) or 8 (EAN-8).
 If any digit is not clearly legible, return null. Never guess.`;
 
-/* ---- 所有「把照片交给 AI」的功能都走这一个函式 ----
-   Netlify 版：呼叫自己的后端 netlify/functions/vision.mjs，金钥放在那边。
-   会附上登入 token，没登入的人不能用（保护你的 API 额度）。 */
+/* ---- 所有「把照片交给 AI」的功能都走这一个函式 ---- */
 async function visionRequest(b64, prompt, maxTokens) {
-  const { data } = await supabase.auth.getSession();
-  const token = data?.session?.access_token || "";
-  const res = await fetch("/.netlify/functions/vision", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ image: b64, prompt, max_tokens: maxTokens }),
-  });
-  if (!res.ok) throw new Error("vision " + res.status);
-  const body = await res.json();
-  const text = (body.content || []).filter((c) => c.type === "text").map((c) => c.text).join("\n");
-  return JSON.parse(text.replace(/```json|```/g, "").trim());
+  /* 和商品检查共用同一支 Supabase Edge Function（不上网），金钥只设在 Supabase 一处 */
+  const { data, error } = await supabase.functions.invoke("check-food", { body: { image: b64, prompt, max_tokens: maxTokens, web_search: false } });
+  if (error) {
+    let detail = error.message || String(error);
+    try { const body = await error.context?.json?.(); if (body?.error) detail = body.error; } catch { /* 忽略 */ }
+    throw new Error(detail);
+  }
+  if (!data || typeof data.text !== "string") throw new Error(data?.error || "no-text");
+  return extractJson(data.text);
 }
 
 async function readBarcodeDigitsWithAI(file) {
@@ -2168,15 +2169,18 @@ function PetForm({ pet, onSave, onCancel }) {
   const [guessMsg, setGuessMsg] = useState("");
   async function pickPhoto(e) {
     const file = e.target.files?.[0]; e.target.value = ""; if (!file) return;
-    try { set("photo", await readImage(file, 800)); lastFileRef.current = file; setGuessMsg(""); } catch { setErr(F.errPhoto); }
+    try { set("photo", await readImage(file, 800)); lastFileRef.current = file; setGuessMsg(""); } catch { setErr(F.errPhoto); return; }
+    /* 选好照片就自动辨识；已经选了品种的（例如编辑旧资料）不覆盖，想重辨识按按钮 */
+    if (!f.breed) guessFromPhoto(file);
   }
   function removePhoto() { set("photo", ""); lastFileRef.current = null; setGuessMsg(""); }
-  async function guessFromPhoto() {
-    if (!f.photo || guessBusy) return;
+  async function guessFromPhoto(fileArg) {
+    const file = fileArg instanceof File ? fileArg : lastFileRef.current;
+    if ((!file && !f.photo) || guessBusy) return;
     setGuessBusy(true); setGuessMsg("");
     try {
       let dataUrl;
-      if (lastFileRef.current) dataUrl = await readImage(lastFileRef.current, 900);
+      if (file) dataUrl = await readImage(file, 900);
       else if (f.photo.startsWith("data:")) dataUrl = f.photo;
       else dataUrl = await readImage(await (await fetch(f.photo)).blob(), 900); // 照片是网址（存在 Storage）时先抓回来
       const g = await guessPetWithAI(dataUrl);
@@ -2226,7 +2230,7 @@ function PetForm({ pet, onSave, onCancel }) {
             <div className="pp-hint">{F.photoHint}</div>
             {f.photo && (
               <div style={{ marginTop: 12 }}>
-                <button className="pp-btn-ghost" onClick={guessFromPhoto} disabled={guessBusy}>{guessBusy ? F.guessing : F.guess}</button>
+                <button className="pp-btn-ghost" onClick={() => guessFromPhoto()} disabled={guessBusy}>{guessBusy ? <><span className="pp-spin" style={{ borderColor: "rgba(59,48,36,.2)", borderTopColor: "var(--ink)" }} />{F.guessing}</> : guessMsg ? F.guessAgain : F.guess}</button>
                 <div className="pp-hint">{F.guessHint}</div>
                 {guessMsg && <div className="pp-msg soft" style={{ color: "#3B3024" }}>{guessMsg}</div>}
               </div>
