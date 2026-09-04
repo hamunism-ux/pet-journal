@@ -46,6 +46,8 @@ import { loadPets, upsertPet, deletePet, loadLang, saveLang } from "./lib/db";
 
    v2.10：「檢查一款商品」按鈕改醒目樣式；商品檢查移除「拍成分表由 AI 讀」那一層，剩條碼查詢與手動輸入。
 
+   v2.11：檢查按鈕改回深棕色（保留較大尺寸）；寵物檔案新增「主人 Email」（選填，資料庫加 owner_email 欄）。
+
    資料存放：Supabase（見 src/lib/db.js、supabase/schema.sql）；語言偏好存 localStorage
 ------------------------------------------------------------------ */
 
@@ -172,12 +174,12 @@ img.pp-photo{display:block;}
   font-family:var(--font-round);width:100%;
 }
 .pp-btn-check{
-  background:var(--berry);color:#fff;border:none;width:100%;
+  background:var(--ink);color:#FBF6EA;border:none;width:100%;
   padding:17px 22px;border-radius:12px;font-size:16px;font-weight:700;
   font-family:var(--font-round);letter-spacing:.02em;
-  box-shadow:0 4px 12px rgba(158,61,87,.32);
+  box-shadow:0 4px 12px rgba(59,48,36,.28);
 }
-.pp-btn-check:active{transform:translateY(1px);box-shadow:0 2px 6px rgba(158,61,87,.3);}
+.pp-btn-check:active{transform:translateY(1px);box-shadow:0 2px 6px rgba(59,48,36,.26);}
 .pp-btn-ghost{
   background:transparent;color:var(--ink);
   border:1.5px dashed var(--ink-soft);
@@ -378,7 +380,7 @@ const STR = {
     speciesName: { dog: "犬", cat: "貓" },
     rows: {
       species: "物種", gender: "性別", birthday: "生日", weight: "體重", neutered: "結紮",
-      allergies: "過敏原", city: "所在城市", note: "備註",
+      allergies: "過敏原", city: "所在城市", ownerEmail: "主人 Email", note: "備註",
     },
     gender: { male: "公", female: "母" },
     neuteredYes: "已結紮",
@@ -528,6 +530,7 @@ const STR = {
       allergies: "已知過敏原",
       allergiesHint: "點選所有已知的過敏原，沒有就不用選。",
       city: "所在城市", cityHint: "之後找玩伴、揪團、附近診所都會用到。",
+      ownerEmail: "主人 Email", ownerEmailHint: "選填。之後聯絡與找回資料會用到。", errEmail: "Email 格式看起來不對，請確認。",
       note: "備註", notePh: "怕打雷、不能吃太快",
       errName: "請填寫名字。",
       errBirthday: "請填寫生日，年齡與飼料建議需要用到。",
@@ -581,7 +584,7 @@ const STR = {
     speciesName: { dog: "Dog", cat: "Cat" },
     rows: {
       species: "Species", gender: "Sex", birthday: "Date of birth", weight: "Weight", neutered: "Neutered",
-      allergies: "Allergies", city: "City", note: "Notes",
+      allergies: "Allergies", city: "City", ownerEmail: "Owner email", note: "Notes",
     },
     gender: { male: "Male", female: "Female" },
     neuteredYes: "Yes",
@@ -731,6 +734,7 @@ const STR = {
       allergies: "Known allergies",
       allergiesHint: "Tap every known allergen. Leave empty if none.",
       city: "City", cityHint: "Used later for playmates, meet-ups and nearby clinics.",
+      ownerEmail: "Owner email", ownerEmailHint: "Optional. Used later for contact and account recovery.", errEmail: "That email doesn't look right. Please check it.",
       note: "Notes", notePh: "Scared of thunder, eats too fast",
       errName: "Please enter a name.",
       errBirthday: "Please enter a date of birth. Age and food advice depend on it.",
@@ -1466,6 +1470,7 @@ function Detail({ pet, onBack, onEdit, onCheck, onDelete }) {
           <Row k={L.rows.neutered} v={pet.neutered ? L.neuteredYes : L.neuteredNo} />
           <Row k={L.rows.allergies} v={pet.allergies?.length ? allergenList(pet.allergies, lang, L) : L.noAllergy} />
           <Row k={L.rows.city} v={pet.city ? cityLabel(pet.city, lang) : "—"} />
+          <Row k={L.rows.ownerEmail} v={pet.ownerEmail || "—"} />
           {pet.note && <Row k={L.rows.note} v={pet.note} />}
         </dl>
         <div className="pp-type">{L.est} {(pet.birthday || "").replace(/-/g, ".")}</div>
@@ -1681,7 +1686,7 @@ function CheckProduct({ pet, onBack }) {
 
 /* ---------------- 表單 ---------------- */
 
-const EMPTY = { name: "", species: "dog", breed: "", gender: "", birthday: "", weightKg: "", neutered: false, allergies: [], city: "", note: "", photo: "" };
+const EMPTY = { name: "", species: "dog", breed: "", gender: "", birthday: "", weightKg: "", neutered: false, allergies: [], city: "", ownerEmail: "", note: "", photo: "" };
 
 function PetForm({ pet, onSave, onCancel }) {
   const { lang, L } = useL();
@@ -1729,8 +1734,10 @@ function PetForm({ pet, onSave, onCancel }) {
     if (!f.name.trim()) return setErr(F.errName);
     if (!f.birthday) return setErr(F.errBirthday);
     if (f.birthday > today) return setErr(F.errFuture);
+    const email = (f.ownerEmail || "").trim();
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return setErr(F.errEmail);
     setErr("");
-    onSave({ ...f, id: pet?.id || uid(), name: f.name.trim(), breed: f.breed.trim(), weightKg: f.weightKg === "" ? "" : Number(f.weightKg),
+    onSave({ ...f, id: pet?.id || uid(), name: f.name.trim(), breed: f.breed.trim(), weightKg: f.weightKg === "" ? "" : Number(f.weightKg), ownerEmail: email,
       allergies: f.allergies, createdAt: pet?.createdAt || new Date().toISOString() });
   }
 
@@ -1836,6 +1843,12 @@ function PetForm({ pet, onSave, onCancel }) {
               {Object.keys(CITIES).map((k) => <option key={k} value={k}>{CITIES[k][li(lang)]}</option>)}
             </select>
             <div className="pp-hint">{F.cityHint}</div>
+          </div>
+
+          <div className="pp-field">
+            <label className="pp-label" htmlFor="oe">{F.ownerEmail}</label>
+            <input id="oe" className="pp-input" type="email" inputMode="email" autoComplete="email" value={f.ownerEmail || ""} onChange={(e) => set("ownerEmail", e.target.value)} placeholder="you@example.com" />
+            <div className="pp-hint">{F.ownerEmailHint}</div>
           </div>
 
           <div className="pp-field">
