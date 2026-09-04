@@ -76,6 +76,8 @@ import { loadPets, upsertPet, deletePet, loadLang, saveLang } from "./lib/db";
 
    v3.8：AI 判断降低费用：预设不上网、只回 JSON、输出上限 700、照片缩到 1000px；AI 不确定时才提供「上网查证」按钮。
 
+   v3.8.1：AI 判断加速：不上网时预填 JSON 开头（省掉开场白）、输出上限 400、理由各 2 句、成分最多 12 项、照片 800px。
+
    资料存放：Supabase（见 src/lib/db.js、supabase/schema.sql）；语言偏好存 localStorage
 ------------------------------------------------------------------ */
 
@@ -1283,7 +1285,7 @@ Decide suitability for THIS pet, considering everything you know (allergies, spe
 
 Output exactly ONE fenced json block in this shape and nothing else, no explanation before or after:
 \`\`\`json
-{"product":{"name":"","brand":"","ingredients":["..."],"stage":"young|adult|senior|all|unknown","confidence":"high|medium|low"},"verdict":"ok|bad|unsure","reasons":{"zh":"2-3 short sentences in Simplified Chinese addressed to the owner, naming the specific ingredient or stage behind the verdict","en":"the same 2-3 sentences in English"},"sources":["https://..."]}
+{"product":{"name":"","brand":"","ingredients":["main ingredients only, at most 12"],"stage":"young|adult|senior|all|unknown","confidence":"high|medium|low"},"verdict":"ok|bad|unsure","reasons":{"zh":"2 short sentences in Simplified Chinese addressed to the owner, naming the ingredient or stage behind the verdict","en":"the same 2 sentences in English"},"sources":["https://..."]}
 \`\`\``;
 }
 
@@ -1325,11 +1327,13 @@ async function judgeFoodWithAI(product, pet, L, webSearch = false) {
    见 supabase/functions/check-food/index.ts */
 async function foodCheckRequest(b64, prompt, system, opts = {}) {
   const { data, error } = await supabase.functions.invoke("check-food", { body: {
-    image: b64 || null, prompt, system, max_tokens: opts.maxTokens || 700, web_search: !!opts.webSearch, max_searches: opts.maxSearches || 2,
+    image: b64 || null, prompt, system, web_search: !!opts.webSearch, max_searches: opts.maxSearches || 2,
+    max_tokens: opts.maxTokens || (opts.webSearch ? 700 : 400),
+    prefill_json: !opts.webSearch, // 不上网时让后端预填「{」，模型直接输出 JSON 内容
   } });
   if (error) throw error;
   if (!data || typeof data.text !== "string") throw new Error(data?.error || "no-text");
-  return data.text;
+  return data.prefilled ? "{" + data.text : data.text;
 }
 
 /* 检查商品：只看过敏原与年龄段 */
@@ -1855,7 +1859,7 @@ function CheckProduct({ pet, onBack }) {
     const file = e.target.files?.[0]; e.target.value = ""; if (!file) return;
     setBusy("food"); setMsg(""); setAi(null);
     try {
-      const dataUrl = await readImage(file, 1000);
+      const dataUrl = await readImage(file, 800);
       lastFoodRef.current = { kind: "photo", dataUrl };
       const r = await identifyFoodWithAI(dataUrl, pet, L);
       setProd({ name: r.name, ingredients: r.ingredients, stage: r.stage, source: "photo" });
