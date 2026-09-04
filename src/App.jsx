@@ -61,6 +61,8 @@ import { loadPets, upsertPet, deletePet, loadLang, saveLang } from "./lib/db";
 
    v3.4：次要文字颜色加深（对比度）；中文介面全部改为简体中文（过敏原比对词保留繁简两套）。
 
+   v3.5：照片改存 Supabase Storage（pet-photos 桶），资料表 photo 栏只存网址；旧的 data: 照片仍可显示，下次编辑时自动搬过去。
+
    资料存放：Supabase（见 src/lib/db.js、supabase/schema.sql）；语言偏好存 localStorage
 ------------------------------------------------------------------ */
 
@@ -1403,12 +1405,16 @@ export default function PetJournal() {
     const exists = pets.some((p) => p.id === pet.id);
     setPets(exists ? pets.map((p) => (p.id === pet.id ? pet : p)) : [...pets, pet]);
     setView({ name: "detail", id: pet.id });
-    try { await upsertPet(pet, session.user.id); setStorageOk(true); } catch { setStorageOk(false); }
+    try {
+      const saved = await upsertPet(pet, session.user.id);
+      setPets((cur) => cur.map((p) => (p.id === saved.id ? saved : p)));
+      setStorageOk(true);
+    } catch { setStorageOk(false); }
   }
   async function removePet(id) {
     setPets(pets.filter((p) => p.id !== id));
     setView({ name: "list" });
-    try { await deletePet(id); setStorageOk(true); } catch { setStorageOk(false); }
+    try { await deletePet(id, session.user.id); setStorageOk(true); } catch { setStorageOk(false); }
   }
   async function logout() { try { await supabase.auth.signOut(); } catch { /* 忽略 */ } }
 
@@ -1907,14 +1913,17 @@ function PetForm({ pet, onSave, onCancel }) {
   const [guessMsg, setGuessMsg] = useState("");
   async function pickPhoto(e) {
     const file = e.target.files?.[0]; e.target.value = ""; if (!file) return;
-    try { set("photo", await readImage(file)); lastFileRef.current = file; setGuessMsg(""); } catch { setErr(F.errPhoto); }
+    try { set("photo", await readImage(file, 800)); lastFileRef.current = file; setGuessMsg(""); } catch { setErr(F.errPhoto); }
   }
   function removePhoto() { set("photo", ""); lastFileRef.current = null; setGuessMsg(""); }
   async function guessFromPhoto() {
     if (!f.photo || guessBusy) return;
     setGuessBusy(true); setGuessMsg("");
     try {
-      const dataUrl = lastFileRef.current ? await readImage(lastFileRef.current, 900) : f.photo;
+      let dataUrl;
+      if (lastFileRef.current) dataUrl = await readImage(lastFileRef.current, 900);
+      else if (f.photo.startsWith("data:")) dataUrl = f.photo;
+      else dataUrl = await readImage(await (await fetch(f.photo)).blob(), 900); // 照片是网址（存在 Storage）时先抓回来
       const g = await guessPetWithAI(dataUrl);
       if (!g.species) { setGuessMsg(F.guessNone); }
       else {
