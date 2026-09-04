@@ -91,6 +91,8 @@ import { loadPets, upsertPet, deletePet, loadLang, saveLang } from "./lib/db";
 
    v3.9.2：表单必填项（名字、物种、生日）标签加粗、星号醒目，表单顶端一行「＊必填」。
 
+   v3.10：必填改为名字、物种、品种、性别、生日、体重、结扎、城市；所有栏位标题粗体；生日精度到月份（存 YYYY-MM-01）。
+
    资料存放：Supabase（见 src/lib/db.js、supabase/schema.sql）；语言偏好存 localStorage
 ------------------------------------------------------------------ */
 
@@ -335,10 +337,9 @@ img.pp-photo{display:block;}
 /* ---- 表单 ---- */
 .pp-form{padding:12px 16px 40px;}
 .pp-field{margin-bottom:18px;}
-.pp-label{display:block;font-size:12.5px;color:var(--ink-soft);margin-bottom:7px;font-family:var(--font-round);}
+.pp-label{display:block;font-size:13px;color:var(--ink);font-weight:700;margin-bottom:7px;font-family:var(--font-round);}
 .pp-label i{font-style:normal;color:var(--berry);margin-left:3px;}
-.pp-label.req{color:var(--ink);font-weight:700;font-size:13.5px;}
-.pp-label.req i{font-size:15px;font-weight:700;}
+.pp-label i{font-size:15px;font-weight:700;}
 .pp-req-note{font-size:11.5px;color:var(--berry);margin:0 0 14px;font-family:var(--font-round);}
 .pp-input,.pp-select,.pp-textarea{
   width:100%;padding:12px 12px;font-size:15px;
@@ -445,7 +446,7 @@ const STR = {
     join: "、",
     speciesName: { dog: "犬", cat: "猫" },
     rows: {
-      species: "物种", gender: "性别", birthday: "生日", weight: "体重", neutered: "结扎",
+      species: "物种", gender: "性别", birthday: "出生年月", weight: "体重", neutered: "结扎",
       allergies: "过敏原", city: "所在城市", ownerEmail: "主人 Email", note: "备注",
     },
     gender: { male: "公", female: "母" },
@@ -635,8 +636,8 @@ const STR = {
       species: "物种", dog: "犬", cat: "猫",
       breed: "品种", pick: "请选择", breedOtherPh: "请输入品种",
       gender: "性别", male: "公", female: "母",
-      birthday: "生日", birthdayHint: "不确定的话填领养日期就好，之后可以改。",
-      weight: "体重（公斤）", weightHint: "拉到大概的位置，再用 −／＋ 微调。不清楚可以先不填。", weightClear: "清除",
+      birthday: "出生年月", birthdayHint: "不确定就填领养的月份。",
+      weight: "体重（公斤）", weightHint: "拉到大概的位置，再用 −／＋ 微调。", weightClear: "清除",
       neutered: "结扎状态", yes: "已结扎", no: "未结扎",
       allergies: "已知过敏原",
       allergiesHint: "点选所有已知的过敏原，没有就不用选。",
@@ -644,8 +645,13 @@ const STR = {
       ownerEmail: "主人 Email", ownerEmailHint: "选填。之后联络与找回资料会用到。", errEmail: "Email 格式看起来不对，请确认。",
       note: "备注", notePh: "怕打雷、不能吃太快",
       errName: "请填写名字。",
-      errBirthday: "请填写生日，年龄与饲料建议需要用到。",
-      errFuture: "生日不能是未来的日期。",
+      errBirthday: "请填写出生年月。",
+      errFuture: "出生年月不能是未来。",
+      errBreed: "请选择品种。",
+      errGender: "请选择性别。",
+      errWeight: "请填写体重。",
+      errNeutered: "请选择结扎状态。",
+      errCity: "请选择所在城市。",
       errPhoto: "这张图片读不进来，换一张试试。",
       guess: "让 AI 辨识物种与品种",
       guessAgain: "重新辨识",
@@ -693,7 +699,7 @@ const STR = {
     join: ", ",
     speciesName: { dog: "Dog", cat: "Cat" },
     rows: {
-      species: "Species", gender: "Sex", birthday: "Date of birth", weight: "Weight", neutered: "Neutered",
+      species: "Species", gender: "Sex", birthday: "Birth month", weight: "Weight", neutered: "Neutered",
       allergies: "Allergies", city: "City", ownerEmail: "Owner email", note: "Notes",
     },
     gender: { male: "Male", female: "Female" },
@@ -883,8 +889,8 @@ const STR = {
       species: "Species", dog: "Dog", cat: "Cat",
       breed: "Breed", pick: "Select", breedOtherPh: "Enter breed",
       gender: "Sex", male: "Male", female: "Female",
-      birthday: "Date of birth", birthdayHint: "Not sure? Use the adoption date. You can change it later.",
-      weight: "Weight (kg)", weightHint: "Drag to roughly the right spot, then fine-tune with − / +. Leave empty if unsure.", weightClear: "Clear",
+      birthday: "Birth month", birthdayHint: "Not sure? Use the adoption month.",
+      weight: "Weight (kg)", weightHint: "Drag to roughly the right spot, then fine-tune with − / +.", weightClear: "Clear",
       neutered: "Neutered", yes: "Yes", no: "No",
       allergies: "Known allergies",
       allergiesHint: "Tap every known allergen. Leave empty if none.",
@@ -892,8 +898,13 @@ const STR = {
       ownerEmail: "Owner email", ownerEmailHint: "Optional. Used later for contact and account recovery.", errEmail: "That email doesn't look right. Please check it.",
       note: "Notes", notePh: "Scared of thunder, eats too fast",
       errName: "Please enter a name.",
-      errBirthday: "Please enter a date of birth. Age and food advice depend on it.",
-      errFuture: "Date of birth can't be in the future.",
+      errBirthday: "Please enter the birth month.",
+      errFuture: "Birth month can't be in the future.",
+      errBreed: "Please select a breed.",
+      errGender: "Please select the sex.",
+      errWeight: "Please enter the weight.",
+      errNeutered: "Please choose the neuter status.",
+      errCity: "Please select a city.",
       errPhoto: "That image couldn't be read. Try another one.",
       guess: "Let AI identify the species and breed",
       guessAgain: "Identify again",
@@ -1760,7 +1771,7 @@ function Detail({ pet, onBack, onEdit, onCheck, onMates, onDelete }) {
         <dl className="pp-fields">
           <Row k={L.rows.species} v={L.speciesName[pet.species]} />
           <Row k={L.rows.gender} v={L.gender[pet.gender] || "—"} />
-          <Row k={L.rows.birthday} v={pet.birthday || "—"} />
+          <Row k={L.rows.birthday} v={pet.birthday ? pet.birthday.slice(0, 7) : "—"} />
           <Row k={L.rows.weight} v={pet.weightKg ? L.kg(pet.weightKg) : "—"} />
           <Row k={L.rows.neutered} v={pet.neutered ? L.neuteredYes : L.neuteredNo} />
           <Row k={L.rows.allergies} v={pet.allergies?.length ? allergenList(pet.allergies, lang, L) : L.noAllergy} />
@@ -2148,7 +2159,7 @@ function Playmates({ pet, allPets, onBack }) {
 
 /* ---------------- 表单 ---------------- */
 
-const EMPTY = { name: "", species: "dog", breed: "", gender: "", birthday: "", weightKg: "", neutered: false, allergies: [], city: "", ownerEmail: "", note: "", photo: "" };
+const EMPTY = { name: "", species: "dog", breed: "", gender: "", birthday: "", weightKg: "", neutered: null, allergies: [], city: "", ownerEmail: "", note: "", photo: "" };
 
 function PetForm({ pet, onSave, onCancel }) {
   const { lang, L } = useL();
@@ -2200,12 +2211,17 @@ function PetForm({ pet, onSave, onCancel }) {
   }
   function submit() {
     if (!f.name.trim()) return setErr(F.errName);
+    if (!f.breed.trim()) return setErr(F.errBreed);
+    if (!f.gender) return setErr(F.errGender);
     if (!f.birthday) return setErr(F.errBirthday);
-    if (f.birthday > today) return setErr(F.errFuture);
+    if (f.birthday.slice(0, 7) > today.slice(0, 7)) return setErr(F.errFuture);
+    if (f.weightKg === "" || f.weightKg == null) return setErr(F.errWeight);
+    if (f.neutered !== true && f.neutered !== false) return setErr(F.errNeutered);
+    if (!f.city) return setErr(F.errCity);
     const email = (f.ownerEmail || "").trim();
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return setErr(F.errEmail);
     setErr("");
-    onSave({ ...f, id: pet?.id || uid(), name: f.name.trim(), breed: f.breed.trim(), weightKg: f.weightKg === "" ? "" : Number(f.weightKg), ownerEmail: email,
+    onSave({ ...f, id: pet?.id || uid(), name: f.name.trim(), breed: f.breed.trim(), weightKg: Number(f.weightKg), neutered: f.neutered === true, ownerEmail: email,
       allergies: f.allergies, createdAt: pet?.createdAt || new Date().toISOString() });
   }
 
@@ -2243,12 +2259,12 @@ function PetForm({ pet, onSave, onCancel }) {
           </div>
 
           <div className="pp-field">
-            <label className="pp-label req" htmlFor="nm">{F.name}<i>*</i></label>
+            <label className="pp-label" htmlFor="nm">{F.name}<i>*</i></label>
             <input id="nm" className="pp-input" value={f.name} onChange={(e) => set("name", e.target.value)} placeholder={F.namePh} />
           </div>
 
           <div className="pp-field">
-            <label className="pp-label req">{F.species}<i>*</i></label>
+            <label className="pp-label">{F.species}<i>*</i></label>
             <div className="pp-seg">
               <button data-on={f.species === "dog" ? "1" : "0"} onClick={() => changeSpecies("dog")}>{F.dog}</button>
               <button data-on={f.species === "cat" ? "1" : "0"} onClick={() => changeSpecies("cat")}>{F.cat}</button>
@@ -2256,7 +2272,7 @@ function PetForm({ pet, onSave, onCancel }) {
           </div>
 
           <div className="pp-field">
-            <label className="pp-label" htmlFor="br">{F.breed}</label>
+            <label className="pp-label" htmlFor="br">{F.breed}<i>*</i></label>
             <select id="br" className="pp-select" value={breedSel} onChange={(e) => changeBreed(e.target.value)}>
               <option value="">{F.pick}</option>
               {Object.keys(breedTable).map((k) => <option key={k} value={k}>{breedTable[k][li(lang)]}</option>)}
@@ -2265,7 +2281,7 @@ function PetForm({ pet, onSave, onCancel }) {
           </div>
 
           <div className="pp-field">
-            <label className="pp-label">{F.gender}</label>
+            <label className="pp-label">{F.gender}<i>*</i></label>
             <div className="pp-seg">
               <button data-on={f.gender === "male" ? "1" : "0"} onClick={() => set("gender", "male")}>{F.male}</button>
               <button data-on={f.gender === "female" ? "1" : "0"} onClick={() => set("gender", "female")}>{F.female}</button>
@@ -2273,22 +2289,23 @@ function PetForm({ pet, onSave, onCancel }) {
           </div>
 
           <div className="pp-field">
-            <label className="pp-label req" htmlFor="bd">{F.birthday}<i>*</i></label>
-            <input id="bd" className="pp-input" type="date" max={today} value={f.birthday} onChange={(e) => set("birthday", e.target.value)} />
+            <label className="pp-label" htmlFor="bd">{F.birthday}<i>*</i></label>
+            <input id="bd" className="pp-input" type="month" max={today.slice(0, 7)} value={(f.birthday || "").slice(0, 7)} placeholder="2022-03"
+              onChange={(e) => { const v = e.target.value.trim(); set("birthday", /^\d{4}-\d{2}$/.test(v) ? v + "-01" : ""); }} />
             <div className="pp-hint">{F.birthdayHint}</div>
           </div>
 
           <div className="pp-field">
-            <label className="pp-label">{F.weight}</label>
+            <label className="pp-label">{F.weight}<i>*</i></label>
             <WeightPicker value={f.weightKg} species={f.species} onChange={(v) => set("weightKg", v)} />
             <div className="pp-hint">{F.weightHint}</div>
           </div>
 
           <div className="pp-field">
-            <label className="pp-label">{F.neutered}</label>
+            <label className="pp-label">{F.neutered}<i>*</i></label>
             <div className="pp-seg">
-              <button data-on={f.neutered ? "1" : "0"} onClick={() => set("neutered", true)}>{F.yes}</button>
-              <button data-on={!f.neutered ? "1" : "0"} onClick={() => set("neutered", false)}>{F.no}</button>
+              <button data-on={f.neutered === true ? "1" : "0"} onClick={() => set("neutered", true)}>{F.yes}</button>
+              <button data-on={f.neutered === false ? "1" : "0"} onClick={() => set("neutered", false)}>{F.no}</button>
             </div>
           </div>
 
@@ -2305,7 +2322,7 @@ function PetForm({ pet, onSave, onCancel }) {
           </div>
 
           <div className="pp-field">
-            <label className="pp-label" htmlFor="ct">{F.city}</label>
+            <label className="pp-label" htmlFor="ct">{F.city}<i>*</i></label>
             <select id="ct" className="pp-select" value={f.city || ""} onChange={(e) => set("city", e.target.value)}>
               <option value="">{F.pick}</option>
               {Object.keys(CITIES).map((k) => <option key={k} value={k}>{cityLabel(k, lang)}</option>)}
