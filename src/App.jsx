@@ -93,6 +93,7 @@ import { loadPets, upsertPet, deletePet, saveAdvice, loadLang, saveLang } from "
 
    v3.10：必填改为名字、物种、品种、性别、生日、体重、结扎、城市；所有栏位标题粗体；生日精度到月份（存 YYYY-MM-01）。
 
+   v4.2.4：去掉宠物页顶部编号、商品检查页 CHECK、玩伴页 PLAYMATES 三个导览标签。
    v4.2.3：淡入改 0.6 秒。
    v4.2.2：AI 小标改莓红；免责声明颜色再淡；换页加 0.4 秒淡入（尊重减少动态设定）。
    v4.2.1：三栏标题加 AI 小标；免责声明缩短；提示词加入城市（适量）；AI 失败时明确显示一般版并可重试。
@@ -1923,7 +1924,7 @@ function Detail({ pet, onBack, onEdit, onCheck, onMates, onDelete, onAdvice }) {
     <>
       <nav className="pp-nav">
         <button onClick={onBack}>{L.back}</button>
-        <span>NO. {pet.id.slice(0, 6).toUpperCase()}</span>
+        <span />
         <div className="pp-nav-right"><LangToggle /><button onClick={onEdit}>{L.edit}</button></div>
       </nav>
 
@@ -2120,7 +2121,7 @@ function CheckProduct({ pet, onBack }) {
     <>
       <nav className="pp-nav">
         <button onClick={onBack}>{L.back}</button>
-        <span>{C.nav}</span>
+        <span />
         <div className="pp-nav-right"><LangToggle /></div>
       </nav>
 
@@ -2290,7 +2291,7 @@ function Playmates({ pet, allPets, onBack }) {
     <>
       <nav className="pp-nav">
         <button onClick={onBack}>{L.back}</button>
-        <span>{M.nav}</span>
+        <span />
         <div className="pp-nav-right"><LangToggle /></div>
       </nav>
 
