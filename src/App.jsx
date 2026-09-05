@@ -93,6 +93,7 @@ import { loadPets, upsertPet, deletePet, saveAdvice, loadLang, saveLang } from "
 
    v3.10：必填改为名字、物种、品种、性别、生日、体重、结扎、城市；所有栏位标题粗体；生日精度到月份（存 YYYY-MM-01）。
 
+   v4.3.3：表单页顶部去掉 NEW／EDIT；配对理由再加长（最佳 +10%，其他 +15%）。
    v4.3.2：照片与 Email 栏位加一句可见范围的提醒。
    v4.3.1：主人 Email 改为必填。
    v4.3：首页还没有宠物时，显示一排 6 张随机的已加入宠物小照片＋「…」，有宠物后不显示。
@@ -1347,7 +1348,7 @@ Score each candidate 0-100 as a playmate for MY PET. Consider: life stage compat
 Pick the single best candidate.
 
 Return ONLY a JSON object, no markdown, no explanation:
-{"best_id":"<id>","scores":[{"id":"<id>","score":0-100,"pro":{"zh":"one short sentence, 14-18 characters, the main point in favour","en":"same, 8-10 words"},"con":{"zh":"one short sentence, 14-18 characters, the main concern (or empty string if none)","en":"same, 8-10 words"}}],"reasons":{"zh":["3 bullet points in Simplified Chinese, each one full sentence of 25-40 characters, explaining concretely why best_id fits (mention the actual ages, weights or traits)"],"en":["the same 3 points in English, each one sentence of 15-25 words"]}}`;
+{"best_id":"<id>","scores":[{"id":"<id>","score":0-100,"pro":{"zh":"one short sentence, 16-21 characters, the main point in favour","en":"same, 9-12 words"},"con":{"zh":"one short sentence, 16-21 characters, the main concern (or empty string if none)","en":"same, 9-12 words"}}],"reasons":{"zh":["3 bullet points in Simplified Chinese, each one full sentence of 30-45 characters, explaining concretely why best_id fits (mention the actual ages, weights or traits)"],"en":["the same 3 points in English, each one sentence of 18-28 words"]}}`;
 }
 /* 把 AI 的打分套回候选名单：最佳配对排第一、只有它带 Email 与理由 */
 function applyMatch(cands, ai) {
@@ -2482,7 +2483,7 @@ function PetForm({ pet, onSave, onCancel }) {
     <>
       <nav className="pp-nav">
         <button onClick={onCancel}>{L.cancelNav}</button>
-        <span>{pet ? F.editLabel : F.newLabel}</span>
+        <span />
         <div className="pp-nav-right"><LangToggle /></div>
       </nav>
 
