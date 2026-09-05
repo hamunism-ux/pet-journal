@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, createContext, useContext } from "react";
 import { BrowserMultiFormatReader, DecodeHintType, BarcodeFormat } from "@zxing/library";
 import { supabase, supabaseConfigured } from "./lib/supabase";
 import { AUTH_MODE } from "./config.js";
-import { loadPets, upsertPet, deletePet, loadLang, saveLang } from "./lib/db";
+import { loadPets, upsertPet, deletePet, saveAdvice, loadLang, saveLang } from "./lib/db";
 
 /* ------------------------------------------------------------------
    宠物护照 v2 — 手帐风格版（新 artifact，旧版不受影响）
@@ -93,6 +93,8 @@ import { loadPets, upsertPet, deletePet, loadLang, saveLang } from "./lib/db";
 
    v3.10：必填改为名字、物种、品种、性别、生日、体重、结扎、城市；所有栏位标题粗体；生日精度到月份（存 YYYY-MM-01）。
 
+   v4.2：营养方向／推荐商品／养育建议改由 AI 生成（中英一次），快取在宠物资料（advice、advice_key），
+      只有影响建议的资料改了才重新生成；生成期间先显示规则版并转圈。用较快的模型（model: fast）。
    v4.1.2：玩伴页顶部城市改为粗体贴纸；配对分数改为「标签＋能量条」。
    v4.1.1：未选中候选的优点／顾虑加长约四成；配对页说明改为「依宠物综合资料挑出最佳配对」。
    v4.1：未选中的候选也显示 AI 给的一句优点、一句顾虑（极精简）。
@@ -486,6 +488,8 @@ const STR = {
     annex1: "营养方向",
     annex2: "推荐商品",
     annex3: "养育建议",
+    aiGenerating: "AI 正在为牠量身生成…",
+    aiProductNote: "商品由 AI 推荐，购买前请确认成分与供应。",
     checkBtn: "检查一款商品适不适合牠",
     noProducts: "目前的目录里没有能避开所有过敏原、又符合年龄阶段的商品。建议直接咨询兽医，或考虑处方饲料。",
     ingredientsLabel: "主要成分：",
@@ -740,6 +744,8 @@ const STR = {
     annex1: "Nutrition profile",
     annex2: "Recommended products",
     annex3: "Care guide",
+    aiGenerating: "AI is tailoring this for them…",
+    aiProductNote: "Product suggested by AI; check ingredients and availability before buying.",
     checkBtn: "Check if a product suits them",
     noProducts: "Nothing in the current catalogue avoids all listed allergens and fits this life stage. Talk to your vet or consider a prescription diet.",
     ingredientsLabel: "Main ingredients: ",
@@ -1428,6 +1434,7 @@ async function foodCheckRequest(b64, prompt, system, opts = {}) {
   const { data, error } = await supabase.functions.invoke("check-food", { body: {
     image: b64 || null, prompt, system, web_search: !!opts.webSearch, max_searches: opts.maxSearches || 2,
     max_tokens: opts.maxTokens || (opts.webSearch ? 900 : 600),
+    model: opts.model || "default", // "fast" = 便宜快速的模型，给要反复看的页面用
   } });
   if (error) {
     /* supabase.functions.invoke 把后端的错误内容藏在 context 里，尽量挖出来给画面看 */
@@ -1437,6 +1444,49 @@ async function foodCheckRequest(b64, prompt, system, opts = {}) {
   }
   if (!data || typeof data.text !== "string") throw new Error(data?.error || "no-text");
   return data.text;
+}
+
+/* ---- 三栏建议改由 AI 生成，并快取在宠物资料里 ----
+   速度与成本的关键：只在「影响建议的资料」改变时才重新生成，其他时候打开页面直接用快取，零等待零费用。
+   一次要中英文两份，切换语言不用再呼叫。 */
+function adviceKey(pet) {
+  return JSON.stringify({
+    sp: pet.species, br: breedKey(pet.species, pet.breed), st: lifeStage(pet), w: Math.round(Number(pet.weightKg) || 0),
+    n: !!pet.neutered, g: pet.gender || "", al: [...(pet.allergies || [])].sort(),
+  });
+}
+const ADVICE_SYSTEM = `You write concise, practical guidance for a pet journal app. Plain everyday language, no fluff, no hedging. Follow mainstream veterinary consensus. When recommending a product, name a real, widely available one and stay conservative.`;
+function buildAdvicePrompt(pet) {
+  const a = ageParts(pet.birthday);
+  const profile = {
+    species: pet.species, breed: breedLabel(pet.species, pet.breed, "en") || "unknown", sex: pet.gender || "unknown",
+    age_months: a ? a.y * 12 + a.m : null, life_stage: lifeStage(pet), weight_kg: Number(pet.weightKg) || null,
+    neutered: !!pet.neutered, known_allergies: (pet.allergies || []).map((k) => (ALLERGENS[k] ? ALLERGENS[k].label[1] : k)),
+  };
+  return `Pet: ${JSON.stringify(profile)}
+
+Write three sections for THIS pet, in Simplified Chinese ("zh") and English ("en"). Keep it tight: each "v" at most 45 Chinese characters / 30 English words.
+1. nutrition: 2-3 items. Keys: age stage; neutered (only if neutered); allergies (only if any). Say what kind of food to choose and why.
+2. product: ONE real, widely available food that fits (correct species, life stage, avoids the allergies). "why": 2-3 short reasons. "watch": 0-1 caution.
+3. care: exactly 5 items with keys exercise, grooming, health, home, social; 1-2 sentences each, specific to this breed/age/weight.
+
+Return ONLY this JSON, no markdown:
+{"nutrition":{"zh":[{"k":"","v":""}],"en":[{"k":"","v":""}]},"product":{"zh":{"brand":"","name":"","why":[""],"watch":[""]},"en":{"brand":"","name":"","why":[""],"watch":[""]}},"care":{"zh":[{"k":"运动","v":""},{"k":"美容","v":""},{"k":"健康","v":""},{"k":"环境","v":""},{"k":"社交","v":""}],"en":[{"k":"Exercise","v":""},{"k":"Grooming","v":""},{"k":"Health","v":""},{"k":"Home","v":""},{"k":"Social","v":""}]}}`;
+}
+function normalizeAdvice(j) {
+  const list = (x) => (Array.isArray(x) ? x.filter((i) => i && i.k && i.v).map((i) => ({ k: String(i.k), v: String(i.v) })) : []);
+  const prod = (p) => (p && (p.name || p.brand) ? { brand: String(p.brand || ""), name: String(p.name || ""), why: (Array.isArray(p.why) ? p.why : []).map(String).filter(Boolean).slice(0, 3), watch: (Array.isArray(p.watch) ? p.watch : []).map(String).filter(Boolean).slice(0, 1) } : null);
+  const out = {
+    nutrition: { zh: list(j.nutrition?.zh), en: list(j.nutrition?.en) },
+    product: { zh: prod(j.product?.zh), en: prod(j.product?.en) },
+    care: { zh: list(j.care?.zh), en: list(j.care?.en) },
+  };
+  if (!out.nutrition.zh.length || !out.care.zh.length) throw new Error("advice-incomplete");
+  return out;
+}
+async function generateAdvice(pet) {
+  const text = await foodCheckRequest(null, buildAdvicePrompt(pet), ADVICE_SYSTEM, { maxTokens: 1600, model: "fast" });
+  return normalizeAdvice(extractJson(text));
 }
 
 /* 检查商品：只看过敏原与年龄段 */
@@ -1665,6 +1715,11 @@ export default function PetJournal() {
     setView({ name: "list" });
     try { await deletePet(id, session.user.id); setStorageOk(true); } catch { setStorageOk(false); }
   }
+  /* 把 AI 生成的三栏建议存进资料库，下次打开直接用（零等待零费用） */
+  async function saveAdviceFor(id, advice, key) {
+    setPets((cur) => cur.map((p) => (p.id === id ? { ...p, advice, adviceKey: key } : p)));
+    try { await saveAdvice(id, advice, key); } catch { /* 存不进去下次会再生成一次，不影响画面 */ }
+  }
   async function logout() { try { await supabase.auth.signOut(); } catch { /* 忽略 */ } }
 
   const current = pets.find((p) => p.id === view.id);
@@ -1679,7 +1734,7 @@ export default function PetJournal() {
   else if (view.name === "form") body = <PetForm pet={current} onCancel={() => setView(current ? { name: "detail", id: current.id } : { name: "list" })} onSave={savePet} />;
   else if (view.name === "mates" && current) body = <Playmates pet={current} allPets={pets} onBack={() => setView({ name: "detail", id: current.id })} />;
   else if (view.name === "check" && current) body = <CheckProduct pet={current} onBack={() => setView({ name: "detail", id: current.id })} />;
-  else if (view.name === "detail" && current) body = <Detail pet={current} onBack={() => setView({ name: "list" })} onEdit={() => setView({ name: "form", id: current.id })} onCheck={() => setView({ name: "check", id: current.id })} onMates={() => setView({ name: "mates", id: current.id })} onDelete={() => removePet(current.id)} />;
+  else if (view.name === "detail" && current) body = <Detail pet={current} onBack={() => setView({ name: "list" })} onEdit={() => setView({ name: "form", id: current.id })} onCheck={() => setView({ name: "check", id: current.id })} onMates={() => setView({ name: "mates", id: current.id })} onDelete={() => removePet(current.id)} onAdvice={saveAdviceFor} />;
   else body = <List pets={pets} storageOk={storageOk} onLogout={session.user.is_anonymous ? null : logout} onOpen={(id) => setView({ name: "detail", id })} onAdd={() => setView({ name: "form" })} />;
 
   return (
@@ -1814,12 +1869,33 @@ function List({ pets, onOpen, onAdd, storageOk, onLogout }) {
 
 /* ---------------- 详细页 ---------------- */
 
-function Detail({ pet, onBack, onEdit, onCheck, onMates, onDelete }) {
+function Detail({ pet, onBack, onEdit, onCheck, onMates, onDelete, onAdvice }) {
   const { lang, L } = useL();
   const [confirm, setConfirm] = useState(false);
   const advice = foodAdvice(pet, L, lang);
   const picks = recommendProducts(pet, L, lang);
   const care = careAdvice(pet, L, lang);
+
+  /* AI 版三栏：快取命中就直接用；没有或资料变了才生成一次 */
+  const key = adviceKey(pet);
+  const cached = pet.advice && pet.adviceKey === key ? pet.advice : null;
+  const [gen, setGen] = useState(null);
+  const [genBusy, setGenBusy] = useState(false);
+  const ai = cached || gen;
+  useEffect(() => {
+    if (cached || genBusy) return;
+    let alive = true;
+    setGenBusy(true);
+    generateAdvice(pet)
+      .then((adv) => { if (!alive) return; setGen(adv); onAdvice && onAdvice(pet.id, adv, key); })
+      .catch(() => { /* 失败就留着规则版 */ })
+      .finally(() => { if (alive) setGenBusy(false); });
+    return () => { alive = false; };
+  }, [pet.id, key]);
+  const aiNut = ai ? (ai.nutrition[lang]?.length ? ai.nutrition[lang] : ai.nutrition.zh) : null;
+  const aiProd = ai ? (ai.product[lang] || ai.product.zh) : null;
+  const aiCare = ai ? (ai.care[lang]?.length ? ai.care[lang] : ai.care.zh) : null;
+  const spin = genBusy && !ai ? <div className="pp-src" style={{ padding: "0 16px 12px" }}><span className="pp-spin" style={{ borderColor: "rgba(59,48,36,.2)", borderTopColor: "var(--ink)" }} />{L.aiGenerating}</div> : null;
 
   return (
     <>
@@ -1861,13 +1937,25 @@ function Detail({ pet, onBack, onEdit, onCheck, onMates, onDelete }) {
       <div className="paper pp-annex">
         <span className="tape b" />
         <div className="pp-annex-h"><span className="pp-h">{L.annex1}</span><em>NOTE I</em></div>
-        {advice.map((a, i) => <div className="pp-advice" key={i}><div className="k">{a.k}</div><div className="v">{a.v}</div></div>)}
+        {(aiNut || advice).map((a, i) => <div className="pp-advice" key={i}><div className="k">{a.k}</div><div className="v">{a.v}</div></div>)}
+        {spin}
       </div>
 
       <div className="paper pp-annex">
         <span className="tape c" />
         <div className="pp-annex-h"><span className="pp-h">{L.annex2}</span><em>NOTE II</em></div>
-        {picks.length === 0 ? <div className="pp-none">{L.noProducts}</div> : picks.map((r) => (
+        {aiProd ? (
+          <div className="pp-prod">
+            <div className="pp-prod-top">
+              <div style={{ minWidth: 0 }}>
+                {aiProd.brand && <div className="pp-prod-brand">{aiProd.brand}</div>}
+                <h3 className="pp-prod-name">{aiProd.name}</h3>
+              </div>
+            </div>
+            {aiProd.why.length > 0 && <><div className="pp-why-h">{L.whyFor(pet.name)}</div><ul className="pp-why">{aiProd.why.map((w, j) => <li key={j}>{w}</li>)}</ul></>}
+            {aiProd.watch.length > 0 && <><div className="pp-why-h">{L.watchOut}</div><ul className="pp-why warn">{aiProd.watch.map((w, j) => <li key={j}>{w}</li>)}</ul></>}
+          </div>
+        ) : picks.length === 0 ? <div className="pp-none">{L.noProducts}</div> : picks.map((r) => (
           <div className="pp-prod" key={r.p.id}>
             <div className="pp-prod-top">
               <div style={{ minWidth: 0 }}>
@@ -1882,13 +1970,15 @@ function Detail({ pet, onBack, onEdit, onCheck, onMates, onDelete }) {
             {r.warn.length > 0 && <><div className="pp-why-h">{L.watchOut}</div><ul className="pp-why warn">{r.warn.map((w, j) => <li key={j}>{w}</li>)}</ul></>}
           </div>
         ))}
-        <div className="pp-note">{L.disclaimer}</div>
+        {!aiProd && spin}
+        <div className="pp-note">{aiProd ? L.aiProductNote : L.disclaimer}</div>
       </div>
 
       <div className="paper pp-annex">
         <span className="tape" />
         <div className="pp-annex-h"><span className="pp-h">{L.annex3}</span><em>NOTE III</em></div>
-        {care.map((m, i) => <div className="pp-advice" key={i}><div className="k">{m.k}</div><div className="v">{m.v}</div></div>)}
+        {(aiCare || care).map((m, i) => <div className="pp-advice" key={i}><div className="k">{m.k}</div><div className="v">{m.v}</div></div>)}
+        {spin}
         <div className="pp-note">{L.care.sources}</div>
       </div>
 
