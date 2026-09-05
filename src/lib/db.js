@@ -26,6 +26,8 @@ function toRow(p, ownerId) {
     owner_email: p.ownerEmail || null,
     note: p.note || null,
     photo: p.photo || null,
+    advice: p.advice || null,
+    advice_key: p.adviceKey || null,
     updated_at: new Date().toISOString(),
   };
 }
@@ -44,6 +46,8 @@ function fromRow(r) {
     ownerEmail: r.owner_email || "",
     note: r.note || "",
     photo: r.photo || "",
+    advice: r.advice || null,
+    adviceKey: r.advice_key || "",
     createdAt: r.created_at,
   };
 }
@@ -91,6 +95,11 @@ export async function upsertPet(pet, ownerId) {
   const { error } = await supabase.from("pets").upsert(toRow(next, ownerId));
   if (error) throw error;
   return next;
+}
+/* 只更新 AI 建议快取，不动其他栏位 */
+export async function saveAdvice(id, advice, adviceKey) {
+  const { error } = await supabase.from("pets").update({ advice, advice_key: adviceKey }).eq("id", id);
+  if (error) throw error;
 }
 export async function deletePet(id, ownerId) {
   const { error } = await supabase.from("pets").delete().eq("id", id);
