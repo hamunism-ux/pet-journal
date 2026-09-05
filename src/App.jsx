@@ -93,6 +93,7 @@ import { loadPets, upsertPet, deletePet, saveAdvice, loadLang, saveLang } from "
 
    v3.10：必填改为名字、物种、品种、性别、生日、体重、结扎、城市；所有栏位标题粗体；生日精度到月份（存 YYYY-MM-01）。
 
+   v4.3.2：照片与 Email 栏位加一句可见范围的提醒。
    v4.3.1：主人 Email 改为必填。
    v4.3：首页还没有宠物时，显示一排 6 张随机的已加入宠物小照片＋「…」，有宠物后不显示。
    v4.2.4：去掉宠物页顶部编号、商品检查页 CHECK、玩伴页 PLAYMATES 三个导览标签。
@@ -692,7 +693,7 @@ const STR = {
     form: {
       newLabel: "NEW", editLabel: "EDIT", reqNote: "＊ 必填",
       photo: "照片", takePhoto: "拍照", fromGallery: "从相簿选择", removePhoto: "移除照片",
-      photoHint: "照片上限 8 MB。",
+      photoHint: "上限 8 MB。照片会显示给其他使用者。",
       name: "名字", namePh: "小白",
       species: "物种", dog: "犬", cat: "猫",
       breed: "品种", pick: "请选择", breedOtherPh: "请输入品种",
@@ -703,7 +704,7 @@ const STR = {
       allergies: "已知过敏原",
       allergiesHint: "点选所有已知的过敏原，没有就不用选。",
       city: "所在城市", cityHint: "之后找玩伴、揪团、附近诊所都会用到。",
-      ownerEmail: "主人 Email", ownerEmailHint: "之后联络与找回资料会用到。", errEmail: "Email 格式看起来不对，请确认。", errEmailRequired: "请填写主人 Email。",
+      ownerEmail: "主人 Email", ownerEmailHint: "配对成功时对方会看到，用来联络你。", errEmail: "Email 格式看起来不对，请确认。", errEmailRequired: "请填写主人 Email。",
       note: "备注", notePh: "怕打雷、不能吃太快",
       errName: "请填写名字。",
       errBirthday: "请填写出生年月。",
@@ -952,7 +953,7 @@ const STR = {
     form: {
       newLabel: "NEW", editLabel: "EDIT", reqNote: "* Required",
       photo: "Photo", takePhoto: "Take photo", fromGallery: "Choose from library", removePhoto: "Remove photo",
-      photoHint: "Photos up to 8 MB.",
+      photoHint: "Up to 8 MB. Visible to other users.",
       name: "Name", namePh: "Mochi",
       species: "Species", dog: "Dog", cat: "Cat",
       breed: "Breed", pick: "Select", breedOtherPh: "Enter breed",
@@ -963,7 +964,7 @@ const STR = {
       allergies: "Known allergies",
       allergiesHint: "Tap every known allergen. Leave empty if none.",
       city: "City", cityHint: "Used later for playmates, meet-ups and nearby clinics.",
-      ownerEmail: "Owner email", ownerEmailHint: "Used later for contact and account recovery.", errEmail: "That email doesn't look right. Please check it.", errEmailRequired: "Please enter the owner's email.",
+      ownerEmail: "Owner email", ownerEmailHint: "Shown to your match so they can contact you.", errEmail: "That email doesn't look right. Please check it.", errEmailRequired: "Please enter the owner's email.",
       note: "Notes", notePh: "Scared of thunder, eats too fast",
       errName: "Please enter a name.",
       errBirthday: "Please enter the birth month.",
