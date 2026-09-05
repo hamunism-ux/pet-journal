@@ -93,6 +93,7 @@ import { loadPets, upsertPet, deletePet, saveAdvice, loadLang, saveLang } from "
 
    v3.10：必填改为名字、物种、品种、性别、生日、体重、结扎、城市；所有栏位标题粗体；生日精度到月份（存 YYYY-MM-01）。
 
+   v4.3：首页还没有宠物时，显示一排 6 张随机的已加入宠物小照片＋「…」，有宠物后不显示。
    v4.2.4：去掉宠物页顶部编号、商品检查页 CHECK、玩伴页 PLAYMATES 三个导览标签。
    v4.2.3：淡入改 0.6 秒。
    v4.2.2：AI 小标改莓红；免责声明颜色再淡；换页加 0.4 秒淡入（尊重减少动态设定）。
@@ -230,6 +231,15 @@ img.pp-photo{display:block;}
 /* ---- 空状态 ---- */
 .pp-empty{text-align:center;padding:54px 24px;}
 .pp-empty p{color:var(--ink-soft);font-size:14px;line-height:1.9;margin:0 0 22px;}
+.pp-strip{margin-top:34px;}
+.pp-strip-row{display:flex;justify-content:center;align-items:center;}
+.pp-strip-row .ph{width:30px;height:30px;border-radius:50%;overflow:hidden;border:2px solid #fff;box-shadow:0 1px 3px rgba(59,48,36,.25);
+  background:#EFE7D6;margin-left:-6px;display:flex;align-items:center;justify-content:center;color:#A08F76;}
+.pp-strip-row .ph:first-child{margin-left:0;}
+.pp-strip-row .ph img{width:100%;height:100%;object-fit:cover;display:block;}
+.pp-strip-row .ph svg{width:22px;height:22px;}
+.pp-strip-row .more{margin-left:6px;font-family:var(--font-round);font-size:14px;color:var(--ink-soft);letter-spacing:.1em;}
+.pp-strip-cap{margin-top:8px;font-size:11.5px;color:var(--ink-soft);}
 
 /* ---- 按钮 ---- */
 .pp-btn{
@@ -474,6 +484,7 @@ const STR = {
     },
     issued: (n) => `${n} 位家庭成员`,
     notIssued: "还没有家庭成员",
+    stripCap: "牠们已经在这里了，欢迎加入",
     stats: (o, p) => `本宠物世界已有 ${o} 位主人加入，共 ${p} 只宠物`,
     storageWarn: "资料暂时无法储存，这次的修改在重新整理后可能会消失。",
     empty1: "这本手帐还是空的。",
@@ -733,6 +744,7 @@ const STR = {
     },
     issued: (n) => `${n} family member${n === 1 ? "" : "s"}`,
     notIssued: "No family members yet",
+    stripCap: "They're already here. Come and join.",
     stats: (o, p) => `${o} owner${o === 1 ? "" : "s"} have joined this pet world, with ${p} pet${p === 1 ? "" : "s"}`,
     storageWarn: "Data can't be saved right now. Changes may be lost after a refresh.",
     empty1: "This journal is still empty.",
@@ -1508,6 +1520,13 @@ async function generateAdvice(pet) {
   return normalizeAdvice(extractJson(text));
 }
 
+/* 空状态用的「已加入的宠物」小照片：问资料库随机取几只（见 migrate-v8-sample.sql） */
+async function loadSamplePets(n = 6) {
+  const { data, error } = await supabase.rpc("sample_pets", { n });
+  if (error) throw error;
+  return (data || []).map((r) => ({ photo: r.photo || "", species: r.species, breed: r.breed || "" }));
+}
+
 /* 检查商品：只看过敏原与年龄段 */
 function checkProduct(pet, prod) {
   const allergies = pet.allergies || [];
@@ -1831,6 +1850,13 @@ function LangToggle() {
 function List({ pets, onOpen, onAdd, storageOk, onLogout }) {
   const { lang, L } = useL();
   const [stats, setStats] = useState(null);
+  const [samples, setSamples] = useState([]);
+  useEffect(() => {
+    if (pets.length > 0) { setSamples([]); return; }
+    let alive = true;
+    loadSamplePets(6).then((r) => { if (alive) setSamples(r); }).catch(() => {});
+    return () => { alive = false; };
+  }, [pets.length]);
   useEffect(() => {
     let alive = true;
     loadStats(pets).then((st) => { if (alive) setStats(st); }).catch(() => {});
@@ -1858,6 +1884,19 @@ function List({ pets, onOpen, onAdd, storageOk, onLogout }) {
           <div className="pp-empty">
             <p>{L.empty1}<br />{L.empty2}</p>
             <button className="pp-btn" onClick={onAdd}>{L.createFirst}</button>
+            {samples.length > 0 && (
+              <div className="pp-strip">
+                <div className="pp-strip-row">
+                  {samples.map((p, i) => (
+                    <div className="ph" key={i}>
+                      {p.photo ? <img src={p.photo} alt="" /> : <svg viewBox="0 0 100 100" fill="currentColor" aria-hidden="true" dangerouslySetInnerHTML={{ __html: SIL[silhouetteFor(p.species, p.breed)] }} />}
+                    </div>
+                  ))}
+                  <span className="more">…</span>
+                </div>
+                <div className="pp-strip-cap">{L.stripCap}</div>
+              </div>
+            )}
           </div>
         ) : (
           pets.map((p, i) => (
