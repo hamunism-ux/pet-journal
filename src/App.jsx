@@ -93,6 +93,7 @@ import { loadPets, upsertPet, deletePet, saveAdvice, loadLang, saveLang } from "
 
    v3.10：必填改为名字、物种、品种、性别、生日、体重、结扎、城市；所有栏位标题粗体；生日精度到月份（存 YYYY-MM-01）。
 
+   v4.2.3：淡入改 0.6 秒。
    v4.2.2：AI 小标改莓红；免责声明颜色再淡；换页加 0.4 秒淡入（尊重减少动态设定）。
    v4.2.1：三栏标题加 AI 小标；免责声明缩短；提示词加入城市（适量）；AI 失败时明确显示一般版并可重试。
    v4.2：营养方向／推荐商品／养育建议改由 AI 生成（中英一次），快取在宠物资料（advice、advice_key），
@@ -136,7 +137,7 @@ const CSS = `
 }
 .pp *{box-sizing:border-box;}
 /* ---- 换页淡入 ---- */
-.pp-fade{animation:ppfade .4s ease both;}
+.pp-fade{animation:ppfade .6s ease both;}
 @keyframes ppfade{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:none;}}
 @media (prefers-reduced-motion:reduce){.pp-fade{animation:none;}}
 .pp button{font-family:inherit;cursor:pointer;}
