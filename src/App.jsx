@@ -93,6 +93,7 @@ import { loadPets, upsertPet, deletePet, saveAdvice, loadLang, saveLang } from "
 
    v3.10：必填改为名字、物种、品种、性别、生日、体重、结扎、城市；所有栏位标题粗体；生日精度到月份（存 YYYY-MM-01）。
 
+   v4.3.1：主人 Email 改为必填。
    v4.3：首页还没有宠物时，显示一排 6 张随机的已加入宠物小照片＋「…」，有宠物后不显示。
    v4.2.4：去掉宠物页顶部编号、商品检查页 CHECK、玩伴页 PLAYMATES 三个导览标签。
    v4.2.3：淡入改 0.6 秒。
@@ -702,7 +703,7 @@ const STR = {
       allergies: "已知过敏原",
       allergiesHint: "点选所有已知的过敏原，没有就不用选。",
       city: "所在城市", cityHint: "之后找玩伴、揪团、附近诊所都会用到。",
-      ownerEmail: "主人 Email", ownerEmailHint: "选填。之后联络与找回资料会用到。", errEmail: "Email 格式看起来不对，请确认。",
+      ownerEmail: "主人 Email", ownerEmailHint: "之后联络与找回资料会用到。", errEmail: "Email 格式看起来不对，请确认。", errEmailRequired: "请填写主人 Email。",
       note: "备注", notePh: "怕打雷、不能吃太快",
       errName: "请填写名字。",
       errBirthday: "请填写出生年月。",
@@ -962,7 +963,7 @@ const STR = {
       allergies: "Known allergies",
       allergiesHint: "Tap every known allergen. Leave empty if none.",
       city: "City", cityHint: "Used later for playmates, meet-ups and nearby clinics.",
-      ownerEmail: "Owner email", ownerEmailHint: "Optional. Used later for contact and account recovery.", errEmail: "That email doesn't look right. Please check it.",
+      ownerEmail: "Owner email", ownerEmailHint: "Used later for contact and account recovery.", errEmail: "That email doesn't look right. Please check it.", errEmailRequired: "Please enter the owner's email.",
       note: "Notes", notePh: "Scared of thunder, eats too fast",
       errName: "Please enter a name.",
       errBirthday: "Please enter the birth month.",
@@ -2469,7 +2470,8 @@ function PetForm({ pet, onSave, onCancel }) {
     if (f.neutered !== true && f.neutered !== false) return setErr(F.errNeutered);
     if (!f.city) return setErr(F.errCity);
     const email = (f.ownerEmail || "").trim();
-    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return setErr(F.errEmail);
+    if (!email) return setErr(F.errEmailRequired);
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return setErr(F.errEmail);
     setErr("");
     onSave({ ...f, id: pet?.id || uid(), name: f.name.trim(), breed: f.breed.trim(), weightKg: Number(f.weightKg), neutered: f.neutered === true, ownerEmail: email,
       allergies: f.allergies, createdAt: pet?.createdAt || new Date().toISOString() });
@@ -2581,7 +2583,7 @@ function PetForm({ pet, onSave, onCancel }) {
           </div>
 
           <div className="pp-field">
-            <label className="pp-label" htmlFor="oe">{F.ownerEmail}</label>
+            <label className="pp-label" htmlFor="oe">{F.ownerEmail}<i>*</i></label>
             <input id="oe" className="pp-input" type="email" inputMode="email" autoComplete="email" value={f.ownerEmail || ""} onChange={(e) => set("ownerEmail", e.target.value)} placeholder="you@example.com" />
             <div className="pp-hint">{F.ownerEmailHint}</div>
           </div>
