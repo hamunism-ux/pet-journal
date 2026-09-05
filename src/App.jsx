@@ -93,6 +93,7 @@ import { loadPets, upsertPet, deletePet, saveAdvice, loadLang, saveLang } from "
 
    v3.10：必填改为名字、物种、品种、性别、生日、体重、结扎、城市；所有栏位标题粗体；生日精度到月份（存 YYYY-MM-01）。
 
+   v4.3.4：最佳配对的主人 Email 先用遮罩盖住，点一下遮罩淡出显示。
    v4.3.3：表单页顶部去掉 NEW／EDIT；配对理由再加长（最佳 +10%，其他 +15%）。
    v4.3.2：照片与 Email 栏位加一句可见范围的提醒。
    v4.3.1：主人 Email 改为必填。
@@ -389,6 +390,15 @@ img.pp-photo{display:block;}
 .pp-mate-contact{margin:0 16px 14px;padding:12px 14px;background:#fff;border-radius:8px;font-size:14px;word-break:break-all;
   border:1px dashed var(--ink-soft);}
 .pp-mate-contact .k{font-size:11px;color:var(--ink-soft);font-family:var(--font-round);margin-bottom:4px;}
+.pp-reveal{position:relative;min-height:22px;}
+.pp-reveal .val{transition:opacity .5s ease;}
+.pp-reveal[data-open="0"] .val{opacity:0;}
+.pp-reveal .cover{position:absolute;inset:-6px -8px;border-radius:8px;background:var(--tape-c);
+  background-image:repeating-linear-gradient(90deg,rgba(255,255,255,0) 0 6px,rgba(255,255,255,.35) 6px 9px);
+  display:flex;align-items:center;justify-content:center;cursor:pointer;border:none;width:auto;height:auto;padding:0;
+  font-family:var(--font-round);font-size:13px;color:var(--ink);font-weight:700;
+  transition:opacity .5s ease;box-shadow:0 1px 3px rgba(59,48,36,.2);}
+.pp-reveal[data-open="1"] .cover{opacity:0;pointer-events:none;}
 
 /* ---- 表单 ---- */
 .pp-form{padding:12px 16px 40px;}
@@ -611,6 +621,7 @@ const STR = {
       best: "最佳配对",
       why: "配对理由",
       contact: "主人 Email",
+      reveal: "点一下显示",
       noEmail: "主人没有留 Email",
       catNote: "猫是领域性动物，不建议直接见面；这里的配对比较适合用来和饲主交流养猫经验。",
       fail: "读取失败，请稍后再试。",
@@ -871,6 +882,7 @@ const STR = {
       best: "Best match",
       why: "Why this match",
       contact: "Owner email",
+      reveal: "Tap to reveal",
       noEmail: "The owner didn't leave an email",
       catNote: "Cats are territorial and direct meetings aren't recommended; use this match to swap cat-care tips with the owner instead.",
       fail: "Couldn't load. Please try again later.",
@@ -2312,6 +2324,17 @@ function CheckProduct({ pet, onBack }) {
   );
 }
 
+/* 遮住的 Email：点一下遮罩淡出 */
+function RevealEmail({ email, L }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="pp-reveal" data-open={open ? "1" : "0"}>
+      <div className="val"><a href={`mailto:${email}`} style={{ color: "var(--ink)" }} tabIndex={open ? 0 : -1}>{email}</a></div>
+      <button type="button" className="cover" onClick={() => setOpen(true)} aria-label={L.mates.reveal}>{L.mates.reveal}</button>
+    </div>
+  );
+}
+
 /* ---------------- 寻找附近的玩伴 ---------------- */
 
 function Playmates({ pet, allPets, onBack }) {
@@ -2398,7 +2421,7 @@ function Playmates({ pet, allPets, onBack }) {
                 </div>
                 <div className="pp-mate-contact">
                   <div className="k">{M.contact}</div>
-                  {o.ownerEmail ? <a href={`mailto:${o.ownerEmail}`} style={{ color: "var(--ink)" }}>{o.ownerEmail}</a> : <span style={{ color: "var(--ink-soft)" }}>{M.noEmail}</span>}
+                  {o.ownerEmail ? <RevealEmail email={o.ownerEmail} L={L} /> : <span style={{ color: "var(--ink-soft)" }}>{M.noEmail}</span>}
                 </div>
               </>
             )}
