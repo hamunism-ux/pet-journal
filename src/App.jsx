@@ -93,6 +93,7 @@ import { loadPets, upsertPet, deletePet, saveAdvice, loadLang, saveLang } from "
 
    v3.10：必填改为名字、物种、品种、性别、生日、体重、结扎、城市；所有栏位标题粗体；生日精度到月份（存 YYYY-MM-01）。
 
+   v4.2.2：AI 小标改莓红；免责声明颜色再淡；换页加 0.4 秒淡入（尊重减少动态设定）。
    v4.2.1：三栏标题加 AI 小标；免责声明缩短；提示词加入城市（适量）；AI 失败时明确显示一般版并可重试。
    v4.2：营养方向／推荐商品／养育建议改由 AI 生成（中英一次），快取在宠物资料（advice、advice_key），
       只有影响建议的资料改了才重新生成；生成期间先显示规则版并转圈。用较快的模型（model: fast）。
@@ -134,6 +135,10 @@ const CSS = `
   -webkit-font-smoothing:antialiased;
 }
 .pp *{box-sizing:border-box;}
+/* ---- 换页淡入 ---- */
+.pp-fade{animation:ppfade .4s ease both;}
+@keyframes ppfade{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:none;}}
+@media (prefers-reduced-motion:reduce){.pp-fade{animation:none;}}
 .pp button{font-family:inherit;cursor:pointer;}
 .pp :focus-visible{outline:2px solid var(--berry);outline-offset:2px;}
 
@@ -286,7 +291,7 @@ img.pp-photo{display:block;}
 }
 .pp-annex-h em{font-style:normal;font-family:var(--font-type);font-size:9.5px;color:var(--ink-soft);letter-spacing:.18em;}
 .pp-ai-tag{display:inline-flex;align-items:center;gap:3px;font-family:var(--font-round);font-size:10px;font-weight:700;letter-spacing:.06em;
-  color:#fff;background:var(--ink);border-radius:999px;padding:3px 8px;line-height:1;}
+  color:#fff;background:var(--berry);border-radius:999px;padding:3px 8px;line-height:1;box-shadow:0 1px 3px rgba(158,61,87,.35);}
 .pp-ai-tag::before{content:"✦";font-size:9px;}
 .pp-advice{padding:11px 16px;border-bottom:1px dotted var(--rule);display:flex;gap:12px;}
 .pp-advice:last-of-type{border-bottom:none;}
@@ -294,7 +299,7 @@ img.pp-photo{display:block;}
 .pp-advice .v{font-size:13.5px;line-height:1.8;}
 .pp-note{
   padding:12px 16px 10px;border-top:1px dotted var(--rule);margin-top:6px;
-  font-size:11.5px;line-height:1.75;color:var(--ink-soft);font-style:italic;
+  font-size:11px;line-height:1.75;color:#A89A82;font-style:italic;
 }
 
 /* ---- 推荐商品 ---- */
@@ -1753,7 +1758,7 @@ export default function PetJournal() {
     <LangCtx.Provider value={{ lang, L, setLang }}>
       <div className="pp">
         <style>{CSS}</style>
-        {body}
+        <div className="pp-fade" key={`${view.name}:${view.id || ""}:${session ? 1 : 0}:${loading ? 1 : 0}`}>{body}</div>
       </div>
     </LangCtx.Provider>
   );
