@@ -93,6 +93,7 @@ import { loadPets, upsertPet, deletePet, saveAdvice, loadLang, saveLang } from "
 
    v3.10：必填改为名字、物种、品种、性别、生日、体重、结扎、城市；所有栏位标题粗体；生日精度到月份（存 YYYY-MM-01）。
 
+   v4.2.1：三栏标题加 AI 小标；免责声明缩短；提示词加入城市（适量）；AI 失败时明确显示一般版并可重试。
    v4.2：营养方向／推荐商品／养育建议改由 AI 生成（中英一次），快取在宠物资料（advice、advice_key），
       只有影响建议的资料改了才重新生成；生成期间先显示规则版并转圈。用较快的模型（model: fast）。
    v4.1.2：玩伴页顶部城市改为粗体贴纸；配对分数改为「标签＋能量条」。
@@ -284,6 +285,9 @@ img.pp-photo{display:block;}
   background:linear-gradient(transparent 62%,rgba(229,193,94,.6) 62%);padding:0 3px;
 }
 .pp-annex-h em{font-style:normal;font-family:var(--font-type);font-size:9.5px;color:var(--ink-soft);letter-spacing:.18em;}
+.pp-ai-tag{display:inline-flex;align-items:center;gap:3px;font-family:var(--font-round);font-size:10px;font-weight:700;letter-spacing:.06em;
+  color:#fff;background:var(--ink);border-radius:999px;padding:3px 8px;line-height:1;}
+.pp-ai-tag::before{content:"✦";font-size:9px;}
 .pp-advice{padding:11px 16px;border-bottom:1px dotted var(--rule);display:flex;gap:12px;}
 .pp-advice:last-of-type{border-bottom:none;}
 .pp-advice .k{flex:0 0 62px;font-size:11px;color:var(--ink-soft);padding-top:3px;font-family:var(--font-round);}
@@ -489,13 +493,16 @@ const STR = {
     annex2: "推荐商品",
     annex3: "养育建议",
     aiGenerating: "AI 正在为牠量身生成…",
-    aiProductNote: "商品由 AI 推荐，购买前请确认成分与供应。",
+    aiProductNote: "AI 推荐，购买前请核实。",
+    aiCareNote: "AI 建议，仅供参考。",
+    aiFailed: "AI 暂时无法生成，以下为一般建议。",
+    aiRetry: "重试",
     checkBtn: "检查一款商品适不适合牠",
     noProducts: "目前的目录里没有能避开所有过敏原、又符合年龄阶段的商品。建议直接咨询兽医，或考虑处方饲料。",
     ingredientsLabel: "主要成分：",
     whyFor: (n) => `为什么适合 ${n}`,
     watchOut: "要留意",
-    disclaimer: "商品为示范资料。建议仅供参考，请以兽医意见为准。",
+    disclaimer: "示范商品，仅供参考。",
     deleteBtn: "移除这位成员",
     deleteConfirm: (n) => `删除后无法复原。确定要移除 ${n} 吗？`,
     deleteYes: "确定移除",
@@ -570,7 +577,7 @@ const STR = {
         soAdult: "成猫接受新猫要几周到几个月，个性合不合比年龄重要。",
         soSenior: "老猫喜欢安静，别找活泼幼猫来吵牠。",
       },
-      sources: "参考 AAHA、WSAVA、AVSAB、International Cat Care 的指引。一般建议，有状况请问兽医。",
+      sources: "一般建议，有状况请问兽医。",
     },
     mates: {
       btn: "寻找附近的玩伴",
@@ -745,13 +752,16 @@ const STR = {
     annex2: "Recommended products",
     annex3: "Care guide",
     aiGenerating: "AI is tailoring this for them…",
-    aiProductNote: "Product suggested by AI; check ingredients and availability before buying.",
+    aiProductNote: "AI suggestion; verify before buying.",
+    aiCareNote: "AI guidance; for reference only.",
+    aiFailed: "AI is unavailable right now; showing general guidance.",
+    aiRetry: "Retry",
     checkBtn: "Check if a product suits them",
     noProducts: "Nothing in the current catalogue avoids all listed allergens and fits this life stage. Talk to your vet or consider a prescription diet.",
     ingredientsLabel: "Main ingredients: ",
     whyFor: (n) => `Why it suits ${n}`,
     watchOut: "Keep in mind",
-    disclaimer: "Sample products for demonstration. Suggestions are a guide only; ask your vet.",
+    disclaimer: "Sample product; for reference only.",
     deleteBtn: "Remove this member",
     deleteConfirm: (n) => `This can't be undone. Remove ${n}?`,
     deleteYes: "Remove",
@@ -826,7 +836,7 @@ const STR = {
         soAdult: "An adult takes weeks to months to accept a new cat. Personality matters more than age.",
         soSenior: "Old cats like it quiet; don't bring in a lively kitten to bother them.",
       },
-      sources: "Based on AAHA, WSAVA, AVSAB and International Cat Care guidelines. General advice; ask your vet if anything seems off.",
+      sources: "General guidance; ask your vet if in doubt.",
     },
     mates: {
       btn: "Find playmates nearby",
@@ -1452,7 +1462,7 @@ async function foodCheckRequest(b64, prompt, system, opts = {}) {
 function adviceKey(pet) {
   return JSON.stringify({
     sp: pet.species, br: breedKey(pet.species, pet.breed), st: lifeStage(pet), w: Math.round(Number(pet.weightKg) || 0),
-    n: !!pet.neutered, g: pet.gender || "", al: [...(pet.allergies || [])].sort(),
+    n: !!pet.neutered, g: pet.gender || "", al: [...(pet.allergies || [])].sort(), c: pet.city || "",
   });
 }
 const ADVICE_SYSTEM = `You write concise, practical guidance for a pet journal app. Plain everyday language, no fluff, no hedging. Follow mainstream veterinary consensus. When recommending a product, name a real, widely available one and stay conservative.`;
@@ -1462,8 +1472,10 @@ function buildAdvicePrompt(pet) {
     species: pet.species, breed: breedLabel(pet.species, pet.breed, "en") || "unknown", sex: pet.gender || "unknown",
     age_months: a ? a.y * 12 + a.m : null, life_stage: lifeStage(pet), weight_kg: Number(pet.weightKg) || null,
     neutered: !!pet.neutered, known_allergies: (pet.allergies || []).map((k) => (ALLERGENS[k] ? ALLERGENS[k].label[1] : k)),
+    city: pet.city && pet.city !== "other" ? (CITIES[pet.city] ? CITIES[pet.city][1] : pet.city) : null,
   };
   return `Pet: ${JSON.stringify(profile)}
+${profile.city ? `The pet lives in ${profile.city}. Where it genuinely helps, weave in ONE brief local touch (climate, a typical place to exercise, groom or meet other owners) in at most two items across all sections. Do not force it and never invent specific business names.` : ""}
 
 Write three sections for THIS pet, in Simplified Chinese ("zh") and English ("en"). Keep it tight: each "v" at most 45 Chinese characters / 30 English words.
 1. nutrition: 2-3 items. Keys: age stage; neutered (only if neutered); allergies (only if any). Say what kind of food to choose and why.
@@ -1881,17 +1893,21 @@ function Detail({ pet, onBack, onEdit, onCheck, onMates, onDelete, onAdvice }) {
   const cached = pet.advice && pet.adviceKey === key ? pet.advice : null;
   const [gen, setGen] = useState(null);
   const [genBusy, setGenBusy] = useState(false);
+  const [genFailed, setGenFailed] = useState(false);
+  const [retry, setRetry] = useState(0);
   const ai = cached || gen;
   useEffect(() => {
     if (cached || genBusy) return;
     let alive = true;
-    setGenBusy(true);
+    setGenBusy(true); setGenFailed(false);
     generateAdvice(pet)
       .then((adv) => { if (!alive) return; setGen(adv); onAdvice && onAdvice(pet.id, adv, key); })
-      .catch(() => { /* 失败就留着规则版 */ })
+      .catch(() => { if (alive) setGenFailed(true); }) // 失败：画面停在规则版，并让使用者知道
       .finally(() => { if (alive) setGenBusy(false); });
     return () => { alive = false; };
-  }, [pet.id, key]);
+  }, [pet.id, key, retry]);
+  const aiTag = (note) => (ai ? <span className="pp-ai-tag">AI</span> : <em>{note}</em>);
+  const failNote = genFailed && !ai ? <div className="pp-src" style={{ padding: "0 16px 12px" }}>{L.aiFailed} <button className="pp-wt-clear" style={{ margin: 0, padding: 0 }} onClick={() => setRetry((n) => n + 1)}>{L.aiRetry}</button></div> : null;
   const aiNut = ai ? (ai.nutrition[lang]?.length ? ai.nutrition[lang] : ai.nutrition.zh) : null;
   const aiProd = ai ? (ai.product[lang] || ai.product.zh) : null;
   const aiCare = ai ? (ai.care[lang]?.length ? ai.care[lang] : ai.care.zh) : null;
@@ -1936,14 +1952,14 @@ function Detail({ pet, onBack, onEdit, onCheck, onMates, onDelete, onAdvice }) {
 
       <div className="paper pp-annex">
         <span className="tape b" />
-        <div className="pp-annex-h"><span className="pp-h">{L.annex1}</span><em>NOTE I</em></div>
+        <div className="pp-annex-h"><span className="pp-h">{L.annex1}</span>{aiTag("NOTE I")}</div>
         {(aiNut || advice).map((a, i) => <div className="pp-advice" key={i}><div className="k">{a.k}</div><div className="v">{a.v}</div></div>)}
-        {spin}
+        {spin}{failNote}
       </div>
 
       <div className="paper pp-annex">
         <span className="tape c" />
-        <div className="pp-annex-h"><span className="pp-h">{L.annex2}</span><em>NOTE II</em></div>
+        <div className="pp-annex-h"><span className="pp-h">{L.annex2}</span>{aiTag("NOTE II")}</div>
         {aiProd ? (
           <div className="pp-prod">
             <div className="pp-prod-top">
@@ -1976,10 +1992,10 @@ function Detail({ pet, onBack, onEdit, onCheck, onMates, onDelete, onAdvice }) {
 
       <div className="paper pp-annex">
         <span className="tape" />
-        <div className="pp-annex-h"><span className="pp-h">{L.annex3}</span><em>NOTE III</em></div>
+        <div className="pp-annex-h"><span className="pp-h">{L.annex3}</span>{aiTag("NOTE III")}</div>
         {(aiCare || care).map((m, i) => <div className="pp-advice" key={i}><div className="k">{m.k}</div><div className="v">{m.v}</div></div>)}
         {spin}
-        <div className="pp-note">{L.care.sources}</div>
+        <div className="pp-note">{ai ? L.aiCareNote : L.care.sources}</div>
       </div>
 
       <div style={{ padding: "0 16px 40px" }}>
