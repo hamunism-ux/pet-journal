@@ -93,6 +93,7 @@ import { loadPets, upsertPet, deletePet, saveAdvice, loadLang, saveLang } from "
 
    v3.10：必填改为名字、物种、品种、性别、生日、体重、结扎、城市；所有栏位标题粗体；生日精度到月份（存 YYYY-MM-01）。
 
+   v4.4：玩伴配对结果快取：双方资料指纹没变就不再呼叫 AI（Netlify 版存在 pets.playmate_cache，由 Edge Function 处理）。
    v4.3.4：最佳配对的主人 Email 先用遮罩盖住，点一下遮罩淡出显示。
    v4.3.3：表单页顶部去掉 NEW／EDIT；配对理由再加长（最佳 +10%，其他 +15%）。
    v4.3.2：照片与 Email 栏位加一句可见范围的提醒。
