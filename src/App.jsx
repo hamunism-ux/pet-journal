@@ -93,6 +93,7 @@ import { loadPets, upsertPet, deletePet, loadLang, saveLang } from "./lib/db";
 
    v3.10：必填改为名字、物种、品种、性别、生日、体重、结扎、城市；所有栏位标题粗体；生日精度到月份（存 YYYY-MM-01）。
 
+   v4.1.2：玩伴页顶部城市改为粗体贴纸；配对分数改为「标签＋能量条」。
    v4.1.1：未选中候选的优点／顾虑加长约四成；配对页说明改为「依宠物综合资料挑出最佳配对」。
    v4.1：未选中的候选也显示 AI 给的一句优点、一句顾虑（极精简）。
    v4.0.6：首页「＋」按钮回到右侧，往上抬到 Netlify 标签上方（避开 iPhone 底部手势区）。
@@ -348,9 +349,17 @@ img.pp-photo{display:block;}
 .pp-mini{padding:0 16px 12px;font-size:12px;line-height:1.7;color:var(--ink-soft);}
 .pp-mini .pro::before{content:"＋ ";color:var(--ok);font-weight:700;}
 .pp-mini .con::before{content:"－ ";color:var(--berry);font-weight:700;}
-.pp-mate-score{position:absolute;right:14px;bottom:14px;font-family:var(--font-type);font-size:11px;letter-spacing:.06em;
-  color:var(--ink);background:#fff;border:1px solid var(--rule);border-radius:999px;padding:4px 10px;}
-.pp-mate.match .pp-mate-score{position:static;display:inline-block;margin:0 16px 10px;font-size:13px;font-weight:700;border-color:var(--tape-c);}
+.pp-city-chip{display:inline-block;margin-top:10px;padding:6px 14px;border-radius:999px;background:#fff;
+  border:2px solid var(--ink);font-family:var(--font-round);font-size:15px;font-weight:700;color:var(--ink);
+  box-shadow:0 1px 3px rgba(59,48,36,.18);}
+.pp-score{display:flex;align-items:center;gap:10px;padding:0 16px 14px;}
+.pp-score .lbl{font-family:var(--font-type);font-size:11px;letter-spacing:.06em;color:var(--ink);white-space:nowrap;}
+.pp-mate.match .pp-score .lbl{font-size:13px;font-weight:700;}
+.pp-score .bar{flex:1;height:8px;background:var(--rule);border-radius:999px;overflow:hidden;}
+.pp-mate.match .pp-score .bar{height:10px;}
+.pp-score .fill{height:100%;border-radius:999px;background:var(--ok);transition:width .6s ease;}
+.pp-score .fill[data-lv="mid"]{background:#C9A227;}
+.pp-score .fill[data-lv="low"]{background:var(--berry);}
 .pp-mate-contact{margin:0 16px 14px;padding:12px 14px;background:#fff;border-radius:8px;font-size:14px;word-break:break-all;
   border:1px dashed var(--ink-soft);}
 .pp-mate-contact .k{font-size:11px;color:var(--ink-soft);font-family:var(--font-round);margin-bottom:4px;}
@@ -563,7 +572,7 @@ const STR = {
       btn: "寻找附近的玩伴",
       nav: "PLAYMATES",
       title: (n) => `为 ${n} 寻找附近的玩伴`,
-      intro: (city, sp) => `列出同样在${city}的其他${sp}，依宠物综合资料挑出最佳配对。`,
+      intro: (sp) => `列出同城的其他${sp}，依宠物综合资料挑出最佳配对。`,
       noCity: "还没设定所在城市。到「编辑」把城市填上，就能找同城的玩伴。",
       loading: "AI 正在为牠配对…",
       none: (city) => `${city}目前还没有其他宠物登记。`,
@@ -817,7 +826,7 @@ const STR = {
       btn: "Find playmates nearby",
       nav: "PLAYMATES",
       title: (n) => `Playmates near ${n}`,
-      intro: (city, sp) => `Other ${sp}s in ${city}, with the best match chosen from each pet's full profile.`,
+      intro: (sp) => `Other ${sp}s in this city, with the best match chosen from each pet's full profile.`,
       noCity: "No city set yet. Tap Edit and choose a city to find playmates nearby.",
       loading: "AI is matching…",
       none: (city) => `No other pets are registered in ${city} yet.`,
@@ -2179,7 +2188,8 @@ function Playmates({ pet, allPets, onBack }) {
           {!(rows && rows.some((o) => o.isMatch)) && <Photo src={pet.photo} species={pet.species} breed={pet.breed} big />}
           <h2 className="pp-tier-h">{M.title(pet.name)}</h2>
         </div>
-        <p className="pp-tier-d" style={{ margin: "12px 0 0" }}>{pet.city ? M.intro(city, L.speciesName[pet.species]) : M.noCity}</p>
+        {pet.city && <div className="pp-city-chip">{city}</div>}
+        <p className="pp-tier-d" style={{ margin: "10px 0 0" }}>{pet.city ? M.intro(L.speciesName[pet.species]) : M.noCity}</p>
         {pet.species === "cat" && pet.city && <div className="pp-src">{M.catNote}</div>}
       </div>
 
@@ -2194,7 +2204,6 @@ function Playmates({ pet, allPets, onBack }) {
         return (
           <div className={`pp-mate${o.isMatch ? " match" : ""}`} key={o.id}>
             {o.isMatch && <div className="pp-mate-badge">{M.best}</div>}
-            {o.aiScored && <div className="pp-mate-score">{M.score(o.score)}</div>}
             <div className="pp-card-in">
               {o.isMatch ? (
                 <div className="pp-pair">
@@ -2214,6 +2223,12 @@ function Playmates({ pet, allPets, onBack }) {
                 </div>
               </div>
             </div>
+            {o.aiScored && (
+              <div className="pp-score">
+                <span className="lbl">{M.score(o.score)}</span>
+                <div className="bar"><div className="fill" data-lv={o.score >= 70 ? "high" : o.score >= 40 ? "mid" : "low"} style={{ width: `${Math.max(3, Math.min(100, o.score))}%` }} /></div>
+              </div>
+            )}
             {!o.isMatch && o.aiScored && (o.pro || o.con) && (
               <div className="pp-mini">
                 {o.pro && (o.pro[lang] || o.pro.zh) && <div className="pro">{o.pro[lang] || o.pro.zh}</div>}
