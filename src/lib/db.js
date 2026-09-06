@@ -115,6 +115,34 @@ export async function saveFoodCheck(petId, inputHash, petKey, result) {
     .upsert({ pet_id: petId, input_hash: inputHash, pet_key: petKey, result, created_at: new Date().toISOString() }, { onConflict: "pet_id,input_hash,pet_key" });
   if (error) throw error;
 }
+/* ---- v4.8.0 纯文字聊天（conversations / messages 表与函式，见 supabase/migrate-v11-chat.sql） ----
+   开对话、收件匣、标已读都是资料库函式（只有当事人拿得到自己的）；讯息本身直接读写 messages 表，RLS 管权限。 */
+export async function startConversation(myPetId, theirPetId) {
+  const { data, error } = await supabase.rpc("start_conversation", { p_my_pet: myPetId, p_their_pet: theirPetId });
+  if (error) throw error;
+  return data; // conversation id
+}
+export async function loadInbox() {
+  const { data, error } = await supabase.rpc("inbox");
+  if (error) throw error;
+  return data || [];
+}
+export async function loadMessages(convId, afterId = 0) {
+  const { data, error } = await supabase.from("messages").select("id, sender_id, body, created_at")
+    .eq("conversation_id", convId).gt("id", afterId).order("id", { ascending: true }).limit(300);
+  if (error) throw error;
+  return data || [];
+}
+export async function sendMessage(convId, body) {
+  const { data, error } = await supabase.from("messages").insert({ conversation_id: convId, body })
+    .select("id, sender_id, body, created_at").single();
+  if (error) throw error;
+  return data;
+}
+export async function markRead(convId) {
+  const { error } = await supabase.rpc("mark_read", { p_conv: convId });
+  if (error) throw error;
+}
 export async function deletePet(id, ownerId) {
   const { error } = await supabase.from("pets").delete().eq("id", id);
   if (error) throw error;
