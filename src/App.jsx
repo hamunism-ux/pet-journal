@@ -93,6 +93,9 @@ import { loadPets, upsertPet, deletePet, saveAdvice, loadFoodCheck, saveFoodChec
 
    v3.10：必填改为名字、物种、品种、性别、生日、体重、结扎、城市；所有栏位标题粗体；生日精度到月份（存 YYYY-MM-01）。
 
+   v4.8.6：聊天室上方多显示对方宠物目前的基本资料（品种、年龄、体重、性别、结扎）与当时的配对理由（一行）。
+      理由在开对话时存进对话（migrate-v16），之后重新配对理由变了也不影响；基本资料是即时的。
+   v4.8.5：（资料库端）测试宠物自动回覆：跟 seed-pets 的宠物聊天时，资料库以该主人身分立刻回一句「我是测试资料」，每个对话只回一次（migrate-v14）。App 程式没动。
    v4.8.4：修「sign in required」：① 登出改成只登出这台装置（原本会把所有装置一起登出，害另一台的凭证失效）；
       ② 呼叫 AI 前若凭证失效，先自动换一张新的再重试；换不到就提示「重新整理、再登入一次」；③ 凭证被收回时自动重新整理。
    v4.8.3：找玩伴页：AI 配对失败时不再默默退回规则版，改为显示黄色提示＋失败原因＋「再试一次」（之前只看到分数与理由不见了）。
@@ -509,6 +512,8 @@ img.pp-photo{display:block;}
 .pp-conv .dot{width:9px;height:9px;border-radius:50%;background:var(--berry);flex:none;}
 .pp-chat-head{display:flex;gap:14px;align-items:center;margin:14px 16px 0;padding:12px 14px;}
 .pp-chat-head .pp-photo{width:56px;height:68px;}
+.pp-chat-head{align-items:flex-start;}
+.pp-chat-why{margin-top:6px;font-size:12px;line-height:1.6;color:var(--ink-soft);border-top:1px dashed var(--rule);padding-top:6px;}
 .pp-chat{padding:14px 16px 8px;display:flex;flex-direction:column;gap:8px;min-height:40vh;}
 .pp-bubble{max-width:78%;align-self:flex-start;background:var(--card);color:var(--ink);padding:9px 12px;border-radius:12px 12px 12px 3px;
   box-shadow:0 1px 3px rgba(59,48,36,.14);font-size:14.5px;line-height:1.55;white-space:pre-wrap;word-break:break-word;}
@@ -2955,7 +2960,14 @@ function Chat({ conv, me, onBack }) {
         <Photo src={conv.other_pet_photo} species={conv.other_species} breed={conv.other_breed} />
         <div style={{ minWidth: 0 }}>
           <h2 className="pp-name">{T.with(conv.other_pet_name)}</h2>
-          <div className="pp-meta">{T.pairedIn(conv.my_pet_name, conv.city ? cityLabel(conv.city, lang) : "")}</div>
+          <div className="pp-meta">
+            {conv.other_pet_name} · {breedLabel(conv.other_species, conv.other_breed, lang) || L.speciesName[conv.other_species]} · {ageText(conv.other_birthday, L)}
+            <br />
+            {conv.other_weight_kg ? L.kg(Number(conv.other_weight_kg)) : L.weightUnknown}{conv.other_gender ? ` · ${L.gender[conv.other_gender]}` : ""}{conv.other_neutered ? ` · ${L.neuteredTag}` : ""}
+            <br />
+            {T.pairedIn(conv.my_pet_name, conv.city ? cityLabel(conv.city, lang) : "")}
+          </div>
+          {(() => { const r = conv.reasons && (conv.reasons[lang] || conv.reasons.zh || conv.reasons.en); return r && r.length ? <div className="pp-chat-why">{L.mates.why}：{r.join(" · ")}</div> : null; })()}
         </div>
       </div>
       <div className="pp-chat">
@@ -2993,13 +3005,18 @@ function Playmates({ pet, allPets, onBack, canChat, onChat }) {
   const [tick, setTick] = useState(0);   // 按「再试一次」+1，重新跑一次
   const [chatMsg, setChatMsg] = useState(""); // v4.8.0 打招呼的状态文字
   const [opening, setOpening] = useState(false);
-  async function sayHi(o) {
+  async function sayHi(o, onlyOne) {
     if (opening) return;
     if (!canChat) { setChatMsg(M.needBind); return; }
     setOpening(true); setChatMsg("");
     try {
-      const id = await startConversation(pet.id, o.id);
-      onChat({ id, my_pet_id: pet.id, my_pet_name: pet.name, other_pet_id: o.id, other_pet_name: o.name, other_pet_photo: o.photo, other_species: o.species, other_breed: o.breed, city: pet.city });
+      /* 当时的配对理由，中英各一份：AI 给的就用 AI 的，否则用规则版算两种语言 */
+      const reasons = (o.reasons && (o.reasons.zh?.length || o.reasons.en?.length))
+        ? { zh: o.reasons.zh || [], en: o.reasons.en || [] }
+        : { zh: playmateReasons(pet, o, STR.zh, onlyOne), en: playmateReasons(pet, o, STR.en, onlyOne) };
+      const id = await startConversation(pet.id, o.id, reasons);
+      onChat({ id, my_pet_id: pet.id, my_pet_name: pet.name, other_pet_id: o.id, other_pet_name: o.name, other_pet_photo: o.photo, other_species: o.species, other_breed: o.breed,
+        other_gender: o.gender, other_birthday: o.birthday, other_weight_kg: o.weightKg, other_neutered: o.neutered, city: pet.city, reasons });
     } catch { setChatMsg(M.openFail); }
     setOpening(false);
   }
@@ -3088,7 +3105,7 @@ function Playmates({ pet, allPets, onBack, canChat, onChat }) {
                   <ul className="pp-why">{reasons.map((r, i) => <li key={i}>{r}</li>)}</ul>
                 </div>
                 <div style={{ margin: "0 16px 14px" }}>
-                  <button className="pp-btn" onClick={() => sayHi(o)} disabled={opening}>{opening ? M.opening : M.sayHi}</button>
+                  <button className="pp-btn" onClick={() => sayHi(o, rows.length === 1)} disabled={opening}>{opening ? M.opening : M.sayHi}</button>
                   {chatMsg && <div className="pp-msg">{chatMsg}</div>}
                 </div>
               </>
