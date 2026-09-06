@@ -93,6 +93,9 @@ import { loadPets, upsertPet, deletePet, saveAdvice, loadFoodCheck, saveFoodChec
 
    v3.10：必填改为名字、物种、品种、性别、生日、体重、结扎、城市；所有栏位标题粗体；生日精度到月份（存 YYYY-MM-01）。
 
+   v4.6.3：相容性总检查。① vite.config.js 加 plugin-legacy：主程式转译到 Chrome 64／iOS 12 起可读，更旧的浏览器另给一份带 polyfill 的旧版程式
+      （原本 Chrome 87 以下整页空白）。② index.html 加「载入失败」备援讯息：程式载不进来时显示白话说明＋浏览器资讯，方便截图回报。
+      ③ 照片改用 object URL 载入（省记忆体），读取失败把原因显示在画面上。④ CSS 的 inset 改成 top/left/right/bottom（Chrome 87 以下不认得）。
    v4.6.2：表单的出生年月改成「年」「月」两个下拉选单（所有桌机与手机浏览器都支援）。
       原本的 <input type="month"> 在桌机 Safari／Firefox 不支援，退化成一个打字就被清空的白框，使用者以为坏了。
    v4.6.1：评分卡的扣分原因改放在下方整体描述里（「扣分原因：…」一句话），能量条下面不再有小字；
@@ -405,7 +408,7 @@ img.pp-photo{display:block;}
 .pp-reveal{position:relative;min-height:22px;}
 .pp-reveal .val{transition:opacity .5s ease;}
 .pp-reveal[data-open="0"] .val{opacity:0;}
-.pp-reveal .cover{position:absolute;inset:-6px -8px;border-radius:8px;background:var(--tape-c);
+.pp-reveal .cover{position:absolute;top:-6px;right:-8px;bottom:-6px;left:-8px;border-radius:8px;background:var(--tape-c);
   background-image:repeating-linear-gradient(90deg,rgba(255,255,255,0) 0 6px,rgba(255,255,255,.35) 6px 9px);
   display:flex;align-items:center;justify-content:center;cursor:pointer;border:none;width:auto;height:auto;padding:0;
   font-family:var(--font-round);font-size:13px;color:var(--ink);font-weight:700;
@@ -464,10 +467,10 @@ img.pp-photo{display:block;}
 /* ---- v4.6 四面向评分卡（v4.6.1：打开时能量条与圆环从 0 长到分数） ---- */
 .pp-sc{display:flex;gap:14px;align-items:center;padding:10px 16px 0;}
 .pp-sc-total{flex:none;position:relative;width:66px;height:66px;}
-.pp-sc-total svg{position:absolute;inset:0;transform:rotate(-90deg);}
+.pp-sc-total svg{position:absolute;top:0;left:0;right:0;bottom:0;transform:rotate(-90deg);}
 .pp-sc-total .track{fill:none;stroke:var(--rule);stroke-width:5;}
 .pp-sc-total .ring{fill:none;stroke:var(--ok);stroke-width:5;stroke-linecap:round;transition:stroke-dashoffset 1s cubic-bezier(.4,0,.2,1);}
-.pp-sc-total .txt{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1;}
+.pp-sc-total .txt{position:absolute;top:0;left:0;right:0;bottom:0;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1;}
 .pp-sc-total b{font-family:var(--font-round);font-size:24px;font-weight:700;color:var(--ok);}
 .pp-sc-total i{font-style:normal;font-family:var(--font-type);font-size:10px;letter-spacing:.14em;color:var(--ink-soft);margin-top:3px;}
 .pp-sc-total[data-g="C"] .ring{stroke:#C9A227;}
@@ -1892,24 +1895,30 @@ async function guessPetWithAI(dataUrl) {
   return { species, breed, confidence };
 }
 
+/* v4.6.3：改用 object URL 载入（不再把整张原图转成 base64 字串，省一半以上记忆体，低阶 Android 比较不会当掉），
+   失败时把原因（档案格式、大小、哪一步）带出来显示在画面上，方便远端排查 */
 function readImage(file, max = 480) {
   return new Promise((resolve, reject) => {
-    const fr = new FileReader();
-    fr.onload = () => {
-      const img = new Image();
-      img.onload = () => {
+    const info = `${file.type || "unknown-type"} ${Math.round(file.size / 1024)}KB`;
+    let url = "";
+    try { url = URL.createObjectURL(file); } catch (e) { reject(new Error(`objectURL: ${e?.message || e} · ${info}`)); return; }
+    const img = new Image();
+    const done = () => { try { URL.revokeObjectURL(url); } catch { /* 忽略 */ } };
+    img.onload = () => {
+      done();
+      try {
         const scale = Math.min(1, max / Math.max(img.width, img.height));
         const c = document.createElement("canvas");
         c.width = Math.round(img.width * scale);
         c.height = Math.round(img.height * scale);
         c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
-        resolve(c.toDataURL("image/jpeg", 0.8));
-      };
-      img.onerror = () => reject(new Error("decode"));
-      img.src = fr.result;
+        const out = c.toDataURL("image/jpeg", 0.8);
+        if (!out || out.length < 100) throw new Error("empty canvas");
+        resolve(out);
+      } catch (e) { reject(new Error(`canvas: ${e?.message || e} · ${img.width}x${img.height} · ${info}`)); }
     };
-    fr.onerror = () => reject(new Error("read"));
-    fr.readAsDataURL(file);
+    img.onerror = () => { done(); reject(new Error(`decode failed · ${info}`)); }; // 浏览器看不懂这种图片格式（例如 HEIC）
+    img.src = url;
   });
 }
 
@@ -2748,7 +2757,8 @@ function PetForm({ pet, onSave, onCancel }) {
   const [guessMsg, setGuessMsg] = useState("");
   async function pickPhoto(e) {
     const file = e.target.files?.[0]; e.target.value = ""; if (!file) return;
-    try { set("photo", await readImage(file, 800)); lastFileRef.current = file; setGuessMsg(""); } catch { setErr(F.errPhoto); return; }
+    try { set("photo", await readImage(file, 800)); lastFileRef.current = file; setGuessMsg(""); }
+    catch (e) { setErr(`${F.errPhoto}（${e?.message || e}）`); return; } // 把原因一起显示，远端才排查得出来
     /* 选好照片就自动辨识；已经选了品种的（例如编辑旧资料）不覆盖，想重辨识按按钮 */
     if (!f.breed) guessFromPhoto(file);
   }
