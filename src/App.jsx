@@ -93,6 +93,9 @@ import { loadPets, upsertPet, deletePet, saveAdvice, loadFoodCheck, saveFoodChec
 
    v3.10：必填改为名字、物种、品种、性别、生日、体重、结扎、城市；所有栏位标题粗体；生日精度到月份（存 YYYY-MM-01）。
 
+   v4.7.0：帐号（第一步）。访客（匿名帐号）可以「绑定 Email」升级成正式帐号：输入 Email → 收 6 位数验证码 → 确认，
+      UUID 不变、宠物资料原地保留（用 supabase.auth.updateUser 连结，不是开新帐号）。另有「已有账号？登入」给换手机的人。
+      资料库零改动。首页多一条淡淡的帐号状态列（访客提醒／已绑定 xxx＋登出）。Supabase 后台要把三个 Email 范本加上 {{ .Token }}。
    v4.6.3：相容性总检查。① vite.config.js 加 plugin-legacy：主程式转译到 Chrome 64／iOS 12 起可读，更旧的浏览器另给一份带 polyfill 的旧版程式
       （原本 Chrome 87 以下整页空白）。② index.html 加「载入失败」备援讯息：程式载不进来时显示白话说明＋浏览器资讯，方便截图回报。
       ③ 照片改用 object URL 载入（省记忆体），读取失败把原因显示在画面上。④ CSS 的 inset 改成 top/left/right/bottom（Chrome 87 以下不认得）。
@@ -486,6 +489,17 @@ img.pp-photo{display:block;}
 .pp-sc-rows .num{font-family:var(--font-type);font-size:10.5px;letter-spacing:.02em;color:var(--ink-soft);white-space:nowrap;}
 @media (prefers-reduced-motion:reduce){.pp-sc-rows .fill,.pp-sc-total .ring{transition:none;}}
 
+/* ---- v4.7.0 首页帐号状态列 ---- */
+.pp-acct{margin:14px 16px 0;padding:10px 14px;font-size:12.5px;color:var(--ink-soft);line-height:1.65;}
+.pp-acct .row{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;}
+.pp-acct .pp-link{margin:0;white-space:nowrap;}
+.pp-acct .links{display:flex;gap:14px;flex:none;}
+.pp-acct .panel{margin-top:10px;padding-top:10px;border-top:1px dashed var(--rule);color:var(--ink);}
+.pp-acct .panel .pp-input{padding:10px 12px;font-size:14px;}
+.pp-acct .panel .pp-btn{padding:10px 14px;font-size:13.5px;}
+.pp-acct .panel .pp-msg{margin-top:8px;}
+.pp-acct .panel .pp-hint{margin-top:6px;}
+
 /* ---- 检查商品 ---- */
 .pp-tier{margin:0 16px 18px;padding:16px 16px 14px;}
 .pp-tier-h{font-family:var(--font-round);font-size:15px;font-weight:700;margin:0 0 4px;}
@@ -531,6 +545,17 @@ const STR = {
       notConfigured: "还没填资料库连线。请打开 src/config.js 贴上 Supabase 的 URL 和 anon key，再重新上传。",
       anonFail: "自动登入失败。请到 Supabase 后台 Authentication → Sign In / Providers，打开「Allow anonymous sign-ins」。",
       loadFail: "读取资料失败，请重新整理再试。",
+      /* v4.7.0 帐号列 */
+      guest: "访客模式：资料只存在这台手机的浏览器里，换手机会找不回来。",
+      bind: "绑定 Email", loginLink: "已有账号？登入", bound: (e) => `已绑定 ${e}`,
+      bindIntro: "绑定后，换手机用同一个 Email 登入就能找回资料。不用密码。",
+      loginIntro: "输入你之前绑定过的 Email，我们寄验证码给你。",
+      loginWarn: (n) => `注意：登入后会切换到那个账号，这台手机目前的 ${n} 只宠物不会跟过去。`,
+      codeSend: "寄验证码", codeSending: "寄送中…", codeSent: (e) => `验证码已寄到 ${e}，请到信箱查看（找不到请看垃圾邮件）。`,
+      code: "验证码", codePh: "6 位数", verify: "确认", verifying: "确认中…", cancel: "取消",
+      bindOk: "绑定完成！", loginOk: "登入完成！",
+      emailExists: "这个 Email 已经有账号了。", useLogin: "改用它登入",
+      codeErr: "验证码不对或已过期，请再试一次。", sendErr: "寄送失败：",
     },
     issued: (n) => `${n} 位家庭成员`,
     notIssued: "还没有家庭成员",
@@ -818,6 +843,17 @@ const STR = {
       notConfigured: "Database connection isn't set. Open src/config.js, paste your Supabase URL and anon key, and upload again.",
       anonFail: "Automatic sign-in failed. In Supabase go to Authentication → Sign In / Providers and enable \"Allow anonymous sign-ins\".",
       loadFail: "Couldn't load your data. Please refresh and try again.",
+      /* v4.7.0 account strip */
+      guest: "Guest mode: your data lives only in this phone's browser and won't follow you to a new phone.",
+      bind: "Link an email", loginLink: "Have an account? Sign in", bound: (e) => `Linked to ${e}`,
+      bindIntro: "Once linked, sign in with the same email on any phone to get your data back. No password.",
+      loginIntro: "Enter the email you linked before and we'll send you a code.",
+      loginWarn: (n) => `Note: signing in switches to that account. The ${n} pet${n === 1 ? "" : "s"} on this phone won't come along.`,
+      codeSend: "Send code", codeSending: "Sending…", codeSent: (e) => `Code sent to ${e}. Check your inbox (and spam).`,
+      code: "Code", codePh: "6 digits", verify: "Confirm", verifying: "Confirming…", cancel: "Cancel",
+      bindOk: "Linked!", loginOk: "Signed in!",
+      emailExists: "This email already has an account.", useLogin: "Sign in with it instead",
+      codeErr: "Wrong or expired code. Please try again.", sendErr: "Couldn't send: ",
     },
     issued: (n) => `${n} family member${n === 1 ? "" : "s"}`,
     notIssued: "No family members yet",
@@ -1986,7 +2022,7 @@ export default function PetJournal() {
     setPets((cur) => cur.map((p) => (p.id === id ? { ...p, advice, adviceKey: key } : p)));
     try { await saveAdvice(id, advice, key); } catch { /* 存不进去下次会再生成一次，不影响画面 */ }
   }
-  async function logout() { try { await supabase.auth.signOut(); } catch { /* 忽略 */ } }
+  async function logout() { try { await supabase.auth.signOut(); } catch { /* 忽略 */ } location.reload(); } // 重新整理后会自动再开一个访客帐号
 
   const current = pets.find((p) => p.id === view.id);
 
@@ -2001,7 +2037,7 @@ export default function PetJournal() {
   else if (view.name === "mates" && current) body = <Playmates pet={current} allPets={pets} onBack={() => setView({ name: "detail", id: current.id })} />;
   else if (view.name === "check" && current) body = <CheckProduct pet={current} onBack={() => setView({ name: "detail", id: current.id })} />;
   else if (view.name === "detail" && current) body = <Detail pet={current} onBack={() => setView({ name: "list" })} onEdit={() => setView({ name: "form", id: current.id })} onCheck={() => setView({ name: "check", id: current.id })} onMates={() => setView({ name: "mates", id: current.id })} onDelete={() => removePet(current.id)} onAdvice={saveAdviceFor} />;
-  else body = <List pets={pets} storageOk={storageOk} onLogout={session.user.is_anonymous ? null : logout} onOpen={(id) => setView({ name: "detail", id })} onAdd={() => setView({ name: "form" })} />;
+  else body = <List pets={pets} storageOk={storageOk} session={session} onLogout={logout} onOpen={(id) => setView({ name: "detail", id })} onAdd={() => setView({ name: "form" })} />;
 
   return (
     <LangCtx.Provider value={{ lang, L, setLang }}>
@@ -2014,6 +2050,98 @@ export default function PetJournal() {
 }
 
 /* ---------------- 登入页 ---------------- */
+
+/* ---- v4.7.0 帐号列：访客 → 绑定 Email；或换手机时登入 ----
+   绑定用 supabase.auth.updateUser({ email })：匿名帐号「原地」变成正式帐号，UUID 不变，宠物资料一只都不会动。
+   登入用 signInWithOtp：切换到那个 Email 的帐号（换手机找回资料用）。两者都用 6 位数验证码，不用密码、不点连结。 */
+function AccountCard({ session, petCount, onLogout }) {
+  const { L } = useL();
+  const A = L.auth;
+  const user = session.user;
+  const isGuest = !!user.is_anonymous || !user.email;
+  const [mode, setMode] = useState(""); // "" | bind | login
+  const [email, setEmail] = useState("");
+  const [code, setCode] = useState("");
+  const [step, setStep] = useState("email"); // email | code | done
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null); // { kind: "ok" | "err" | "exists", text }
+
+  function open(m) { setMode(m); setStep("email"); setCode(""); setMsg(null); }
+  function close() { setMode(""); setMsg(null); }
+
+  async function sendCode() {
+    const e = email.trim().toLowerCase();
+    if (!e || busy) return;
+    setBusy(true); setMsg(null);
+    try {
+      const { error } = mode === "bind"
+        ? await supabase.auth.updateUser({ email: e })                 // 匿名 → 正式，寄「变更 Email」验证码
+        : await supabase.auth.signInWithOtp({ email: e, options: { shouldCreateUser: true } }); // 登入，寄「魔法连结／注册」验证码
+      if (error) {
+        const already = /already|exists|registered/i.test(error.message || "") || error.code === "email_exists";
+        setMsg(already && mode === "bind" ? { kind: "exists", text: A.emailExists } : { kind: "err", text: A.sendErr + (error.message || String(error)) });
+      } else { setStep("code"); setMsg({ kind: "ok", text: A.codeSent(e) }); }
+    } catch (err) { setMsg({ kind: "err", text: A.sendErr + (err?.message || String(err)) }); }
+    setBusy(false);
+  }
+
+  async function verify() {
+    const e = email.trim().toLowerCase(), c = code.trim();
+    if (!e || c.length < 6 || busy) return;
+    setBusy(true); setMsg(null);
+    try {
+      const { error } = await supabase.auth.verifyOtp({ email: e, token: c, type: mode === "bind" ? "email_change" : "email" });
+      if (error) setMsg({ kind: "err", text: A.codeErr });
+      else { setStep("done"); setMsg({ kind: "ok", text: mode === "bind" ? A.bindOk : A.loginOk }); } // 之后 onAuthStateChange 会更新 session，这张卡自己会变成「已绑定」
+    } catch { setMsg({ kind: "err", text: A.codeErr }); }
+    setBusy(false);
+  }
+
+  return (
+    <div className="paper pp-acct">
+      <div className="row">
+        <span>{isGuest ? A.guest : A.bound(user.email)}</span>
+        <span className="links">
+          {isGuest ? (
+            <>
+              <button className="pp-link" onClick={() => (mode === "bind" ? close() : open("bind"))}>{A.bind}</button>
+              <button className="pp-link" onClick={() => (mode === "login" ? close() : open("login"))}>{A.loginLink}</button>
+            </>
+          ) : (
+            <button className="pp-link" onClick={onLogout}>{A.logout}</button>
+          )}
+        </span>
+      </div>
+      {isGuest && mode && (
+        <div className="panel">
+          <div className="pp-hint" style={{ marginTop: 0, marginBottom: 8 }}>{mode === "bind" ? A.bindIntro : A.loginIntro}</div>
+          {mode === "login" && petCount > 0 && <div className="pp-msg" style={{ marginTop: 0, marginBottom: 8 }}>{A.loginWarn(petCount)}</div>}
+          {step === "email" && (
+            <div className="pp-inline">
+              <input className="pp-input" type="email" inputMode="email" autoComplete="email" placeholder="you@example.com" value={email}
+                onChange={(e) => setEmail(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") sendCode(); }} />
+              <button className="pp-btn" onClick={sendCode} disabled={busy}>{busy ? A.codeSending : A.codeSend}</button>
+            </div>
+          )}
+          {step === "code" && (
+            <div className="pp-inline">
+              <input className="pp-input" type="text" inputMode="numeric" autoComplete="one-time-code" placeholder={A.codePh} maxLength={8} value={code}
+                onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))} onKeyDown={(e) => { if (e.key === "Enter") verify(); }} />
+              <button className="pp-btn" onClick={verify} disabled={busy || code.trim().length < 6}>{busy ? A.verifying : A.verify}</button>
+            </div>
+          )}
+          {msg && (
+            <div className={`pp-msg${msg.kind === "ok" ? " soft" : ""}`}>
+              {msg.text}
+              {msg.kind === "exists" && <> <button className="pp-link" style={{ marginLeft: 6 }} onClick={() => { const e = email; open("login"); setEmail(e); }}>{A.useLogin}</button></>}
+            </div>
+          )}
+          {step !== "done" && <button className="pp-link" style={{ marginTop: 8 }} onClick={close}>{A.cancel}</button>}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function Login() {
   const { L } = useL();
@@ -2075,7 +2203,7 @@ function LangToggle() {
 
 /* ---------------- 列表页 ---------------- */
 
-function List({ pets, onOpen, onAdd, storageOk, onLogout }) {
+function List({ pets, onOpen, onAdd, storageOk, session, onLogout }) {
   const { lang, L } = useL();
   const [stats, setStats] = useState(null);
   const [samples, setSamples] = useState([]);
@@ -2101,11 +2229,11 @@ function List({ pets, onOpen, onAdd, storageOk, onLogout }) {
         </div>
         <PawSticker />
         <div className="pp-count">{pets.length > 0 ? L.issued(pets.length) : L.notIssued}</div>
-        {onLogout && <button className="pp-link" onClick={onLogout}>{L.auth.logout}</button>}
         <LangToggle />
       </header>
 
       {!storageOk && <div className="pp-alert warn">{L.storageWarn}</div>}
+      {AUTH_MODE === "anonymous" && session && <AccountCard session={session} petCount={pets.length} onLogout={onLogout} />}
 
       <div className="pp-body">
         {pets.length === 0 ? (
