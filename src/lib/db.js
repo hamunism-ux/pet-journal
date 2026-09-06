@@ -101,6 +101,20 @@ export async function saveAdvice(id, advice, adviceKey) {
   const { error } = await supabase.from("pets").update({ advice, advice_key: adviceKey }).eq("id", id);
   if (error) throw error;
 }
+/* ---- v4.5 商品检查结果快取（food_checks 表，见 supabase/migrate-v10-food-checks.sql） ----
+   同一张照片（或同一段输入文字）＋ 同一只宠物的资料指纹 → 直接用上次结果，不再呼叫 AI。
+   owner_id 由资料库自动填成登入者，前端不用传；RLS 保证只看得到自己的。 */
+export async function loadFoodCheck(petId, inputHash, petKey) {
+  const { data, error } = await supabase.from("food_checks").select("result")
+    .eq("pet_id", petId).eq("input_hash", inputHash).eq("pet_key", petKey).maybeSingle();
+  if (error) throw error;
+  return data?.result || null;
+}
+export async function saveFoodCheck(petId, inputHash, petKey, result) {
+  const { error } = await supabase.from("food_checks")
+    .upsert({ pet_id: petId, input_hash: inputHash, pet_key: petKey, result, created_at: new Date().toISOString() }, { onConflict: "pet_id,input_hash,pet_key" });
+  if (error) throw error;
+}
 export async function deletePet(id, ownerId) {
   const { error } = await supabase.from("pets").delete().eq("id", id);
   if (error) throw error;
