@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, createContext, useContext } from "react";
 import { BrowserMultiFormatReader, DecodeHintType, BarcodeFormat } from "@zxing/library";
 import { supabase, supabaseConfigured } from "./lib/supabase";
 import { AUTH_MODE } from "./config.js";
-import { loadPets, upsertPet, deletePet, saveAdvice, loadLang, saveLang } from "./lib/db";
+import { loadPets, upsertPet, deletePet, saveAdvice, loadFoodCheck, saveFoodCheck, loadLang, saveLang } from "./lib/db";
 
 /* ------------------------------------------------------------------
    宠物护照 v2 — 手帐风格版（新 artifact，旧版不受影响）
@@ -93,6 +93,9 @@ import { loadPets, upsertPet, deletePet, saveAdvice, loadLang, saveLang } from "
 
    v3.10：必填改为名字、物种、品种、性别、生日、体重、结扎、城市；所有栏位标题粗体；生日精度到月份（存 YYYY-MM-01）。
 
+   v4.5：商品检查结果快取＋AI 回答固定化。同一张照片（或同一段输入）＋同一只宠物（资料指纹没变）→ 直接用上次结果，
+      不再呼叫 AI；「上网查证」的结果会覆盖快取。Netlify 版存在 food_checks 表（见 supabase/migrate-v10-food-checks.sql），
+      artifact 版存 window.storage。Edge Function check-food 的 temperature 设为 0，不同照片、同一商品的结果也更稳定。
    v4.4：玩伴配对结果快取：双方资料指纹没变就不再呼叫 AI（Netlify 版存在 pets.playmate_cache，由 Edge Function 处理）。
    v4.3.4：最佳配对的主人 Email 先用遮罩盖住，点一下遮罩淡出显示。
    v4.3.3：表单页顶部去掉 NEW／EDIT；配对理由再加长（最佳 +10%，其他 +15%）。
@@ -1463,6 +1466,28 @@ function normalizeFoodResult(j) {
     sources: Array.isArray(j.sources) ? j.sources.filter((u) => /^https?:\/\//.test(u)).slice(0, 3) : [],
   };
 }
+/* ---- v4.5 商品检查结果快取 ----
+   AI 每次回答都可能有一点不同（像掷骰子）。要让「同一张照片、同一只宠物」永远得到同一个答案，
+   唯一能保证的办法是把第一次的结果存起来，之后直接拿出来用。
+   指纹 = 照片档案的 SHA-256（或输入文字的 SHA-256）＋ 宠物资料指纹；两者都没变才算命中。 */
+async function sha256Hex(input) {
+  try {
+    const buf = typeof input === "string" ? new TextEncoder().encode(input) : input;
+    const h = await crypto.subtle.digest("SHA-256", buf);
+    return [...new Uint8Array(h)].map((b) => b.toString(16).padStart(2, "0")).join("");
+  } catch { return null; } // 太旧的浏览器没有 crypto.subtle：回 null＝这次不用快取，照常呼叫 AI
+}
+async function hashFile(file) {
+  try { return await sha256Hex(await file.arrayBuffer()); } catch { return null; }
+}
+/* 会影响判断的宠物资料：物种、品种、生命阶段、整数体重、结扎、过敏原（和送给 AI 的资料一致） */
+function foodCheckKey(pet) {
+  return JSON.stringify({
+    sp: pet.species, br: breedKey(pet.species, pet.breed), st: lifeStage(pet),
+    w: Math.round(Number(pet.weightKg) || 0), n: !!pet.neutered, al: [...(pet.allergies || [])].sort(),
+  });
+}
+
 /* 拍商品外观：照片 → AI */
 async function identifyFoodWithAI(dataUrl, pet, L, webSearch = false) {
   const b64 = dataUrl.split(",")[1];
@@ -2095,14 +2120,28 @@ function CheckProduct({ pet, onBack }) {
   const result = prod && ingText.trim() ? checkProduct(pet, { ...prod, ingredients: ingText }) : null;
   const editProd = (patch) => { setProd({ ...prod, ...patch }); setAi(null); }; // 改了资料，旧的 AI 判断就不算数
   const lastFoodRef = useRef(null); // 记住上一次送给 AI 的东西，「上网查证」时重跑一次
+  /* v4.5 快取：同一张照片（或同一段输入）＋ 宠物指纹没变 → 直接用上次结果，零等待零费用。
+     快取读写出错一律当作没有快取，照常呼叫 AI，不影响画面 */
+  const petKey = foodCheckKey(pet);
+  async function readCache(hash) {
+    if (!hash) return null;
+    try { return await loadFoodCheck(pet.id, hash, petKey); } catch { return null; }
+  }
+  async function writeCache(hash, r) {
+    if (!hash || !r) return;
+    try { await saveFoodCheck(pet.id, hash, petKey, r); } catch { /* 存不进去也没关系 */ }
+  }
+  const toAi = (r) => ({ verdict: r.verdict, reasons: r.reasons, confidence: r.confidence, sources: r.sources || [], searched: !!r.searched });
   async function onVerify() {
     const last = lastFoodRef.current;
     if (!last || busy) return;
     setBusy("verify"); setMsg("");
     try {
       const r = last.kind === "photo" ? await identifyFoodWithAI(last.dataUrl, pet, L, true) : await judgeFoodWithAI(last.product, pet, L, true);
+      r.searched = true;
+      await writeCache(last.hash, r); // 上网查证过的结果较可靠，盖掉原本的快取
       if (last.kind === "photo") setProd({ name: r.name, ingredients: r.ingredients, stage: r.stage, source: "photo" });
-      setAi({ verdict: r.verdict, reasons: r.reasons, confidence: r.confidence, sources: r.sources, searched: true });
+      setAi(toAi(r));
       setAiErr("");
     } catch (e) { setMsg(C.judgeFail); setAiErr(e?.message || String(e)); }
     setBusy("");
@@ -2113,14 +2152,17 @@ function CheckProduct({ pet, onBack }) {
     if (!product.name.trim() && !product.ingredients.trim()) return;
     setBusy("judge"); setMsg(""); setAi(null);
     try {
-      lastFoodRef.current = { kind: "text", product };
-      const r = await judgeFoodWithAI(product, pet, L);
+      const norm = (s) => s.trim().toLowerCase().replace(/\s+/g, " ");
+      const hash = await sha256Hex(JSON.stringify({ n: norm(product.name), i: norm(product.ingredients), s: product.stage }));
+      lastFoodRef.current = { kind: "text", product, hash };
+      let r = await readCache(hash);
+      if (!r) { r = await judgeFoodWithAI(product, pet, L); await writeCache(hash, r); }
       const filled = { ...prod };
       if (!prod.name.trim() && r.name) filled.name = r.name;
       if (!ingText.trim() && r.ingredients) filled.ingredients = r.ingredients;
       if (prod.stage === "unknown" && r.stage !== "unknown") filled.stage = r.stage;
       setProd(filled);
-      setAi({ verdict: r.verdict, reasons: r.reasons, confidence: r.confidence, sources: r.sources });
+      setAi(toAi(r));
       setAiErr("");
     } catch (e) { setMsg(C.judgeFail); setAiErr(e?.message || String(e)); }
     setBusy("");
@@ -2129,11 +2171,13 @@ function CheckProduct({ pet, onBack }) {
     const file = e.target.files?.[0]; e.target.value = ""; if (!file) return;
     setBusy("food"); setMsg(""); setAi(null);
     try {
+      const hash = await hashFile(file); // 照片档案的指纹：同一张照片算出来永远一样
       const dataUrl = await readImage(file, 1000);
-      lastFoodRef.current = { kind: "photo", dataUrl };
-      const r = await identifyFoodWithAI(dataUrl, pet, L);
+      lastFoodRef.current = { kind: "photo", dataUrl, hash };
+      let r = await readCache(hash);
+      if (!r) { r = await identifyFoodWithAI(dataUrl, pet, L); await writeCache(hash, r); }
       setProd({ name: r.name, ingredients: r.ingredients, stage: r.stage, source: "photo" });
-      setAi({ verdict: r.verdict, reasons: r.reasons, confidence: r.confidence, sources: r.sources });
+      setAi(toAi(r));
       setAiErr("");
     } catch (e) { setMsg(C.photoFail); setAiErr(e?.message || String(e)); }
     setBusy("");
