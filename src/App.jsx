@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, createContext, useContext, Fragment } from
 import { BrowserMultiFormatReader, DecodeHintType, BarcodeFormat } from "@zxing/library";
 import { supabase, supabaseConfigured } from "./lib/supabase";
 import { AUTH_MODE } from "./config.js";
-import { loadPets, upsertPet, deletePet, saveAdvice, loadFoodCheck, saveFoodCheck, loadLang, saveLang } from "./lib/db";
+import { loadPets, upsertPet, deletePet, saveAdvice, loadFoodCheck, saveFoodCheck, startConversation, loadInbox, loadMessages, sendMessage, markRead, loadLang, saveLang } from "./lib/db";
 
 /* ------------------------------------------------------------------
    宠物护照 v2 — 手帐风格版（新 artifact，旧版不受影响）
@@ -93,6 +93,10 @@ import { loadPets, upsertPet, deletePet, saveAdvice, loadFoodCheck, saveFoodChec
 
    v3.10：必填改为名字、物种、品种、性别、生日、体重、结扎、城市；所有栏位标题粗体；生日精度到月份（存 YYYY-MM-01）。
 
+   v4.8.0：纯文字聊天（第二步）。找玩伴页的最佳配对多一颗「跟主人打个招呼」：绑定 Email 的正式帐号才能开对话，
+      开了就进聊天室（气泡式、每 3 秒拉一次新讯息、切回页面时立刻拉）。首页多一条「消息」列（有对话才出现，显示未读数）→ 收件匣。
+      资料库：conversations、messages 两张表＋start_conversation / inbox / mark_read 三个函式（migrate-v11-chat.sql）。
+      没做：已读回条、封锁、检举、推播（照决定先不做）。原本的「露出主人 Email」保留。
    v4.7.2：验证码位数由 Supabase 设定决定（6～10 位），输入框改成最多 12 位、提示改成「信里的那串数字」。
    v4.7.1：修「收到验证码回来却没地方输入」：① 宠物只在「换了人」时重新载入，绑定 Email 不再把首页换成「载入中」而冲掉输入框；
       ② 寄出验证码后把进度记在手机上（一小时），切去看信再回来（页面被重载）会自动回到输入验证码；③ 加「没收到？重寄」。
@@ -492,6 +496,31 @@ img.pp-photo{display:block;}
 .pp-sc-rows .num{font-family:var(--font-type);font-size:10.5px;letter-spacing:.02em;color:var(--ink-soft);white-space:nowrap;}
 @media (prefers-reduced-motion:reduce){.pp-sc-rows .fill,.pp-sc-total .ring{transition:none;}}
 
+/* ---- v4.8.0 聊天 ---- */
+.pp-inbox-strip{margin:14px 16px 0;padding:11px 14px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;
+  font-family:var(--font-round);font-size:14px;color:var(--ink);border:none;width:calc(100% - 32px);text-align:left;}
+.pp-inbox-strip .badge{background:var(--berry);color:#fff;font-size:11px;border-radius:999px;padding:2px 8px;font-family:var(--font-type);}
+.pp-inbox-strip .arrow{color:var(--ink-soft);font-size:12px;}
+.pp-conv{display:flex;gap:14px;align-items:center;padding:12px 14px;margin:12px 16px 0;cursor:pointer;border:none;width:calc(100% - 32px);text-align:left;color:var(--ink);}
+.pp-conv .pp-photo{width:56px;height:68px;}
+.pp-conv .body{flex:1;min-width:0;}
+.pp-conv .top{display:flex;justify-content:space-between;align-items:baseline;gap:8px;}
+.pp-conv .who{font-family:var(--font-round);font-size:16px;font-weight:700;}
+.pp-conv .when{font-family:var(--font-type);font-size:10.5px;color:var(--ink-soft);white-space:nowrap;}
+.pp-conv .prev{font-size:13px;color:var(--ink-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px;}
+.pp-conv .dot{width:9px;height:9px;border-radius:50%;background:var(--berry);flex:none;}
+.pp-chat-head{display:flex;gap:14px;align-items:center;margin:14px 16px 0;padding:12px 14px;}
+.pp-chat-head .pp-photo{width:56px;height:68px;}
+.pp-chat{padding:14px 16px 8px;display:flex;flex-direction:column;gap:8px;min-height:40vh;}
+.pp-bubble{max-width:78%;align-self:flex-start;background:var(--card);color:var(--ink);padding:9px 12px;border-radius:12px 12px 12px 3px;
+  box-shadow:0 1px 3px rgba(59,48,36,.14);font-size:14.5px;line-height:1.55;white-space:pre-wrap;word-break:break-word;}
+.pp-bubble.me{align-self:flex-end;background:var(--ink);color:#FBF6EA;border-radius:12px 12px 3px 12px;}
+.pp-bubble .ts{font-family:var(--font-type);font-size:9.5px;opacity:.6;margin-top:3px;text-align:right;}
+.pp-chat-bar{position:sticky;bottom:calc(60px + env(safe-area-inset-bottom,0px));display:flex;gap:8px;align-items:flex-end;
+  padding:10px 16px;background:var(--paper);}
+.pp-chat-bar .pp-textarea{flex:1;min-width:0;min-height:44px;max-height:120px;resize:none;padding:11px 12px;font-size:15px;line-height:1.4;}
+.pp-chat-bar .pp-btn{width:auto;padding:12px 18px;font-size:14px;}
+
 /* ---- v4.7.0 首页帐号状态列 ---- */
 .pp-acct{margin:14px 16px 0;padding:10px 14px;font-size:12.5px;color:var(--ink-soft);line-height:1.65;}
 .pp-acct .row{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;}
@@ -688,6 +717,7 @@ const STR = {
       contact: "主人 Email",
       reveal: "点一下显示",
       noEmail: "主人没有留 Email",
+      sayHi: "跟主人打个招呼", needBind: "先回首页绑定 Email，才能传讯息。", opening: "开启中…", openFail: "开不了对话，请稍后再试。",
       catNote: "猫是领域性动物，不建议直接见面；这里的配对比较适合用来和饲主交流养猫经验。",
       fail: "读取失败，请稍后再试。",
       score: (n) => `AI 配对 ${n} 分`,
@@ -701,6 +731,12 @@ const STR = {
         intactMales: "两只都是未结扎公犬，初次见面要特别留意",
         only: "目前同城只有这一位",
       },
+    },
+    chat: {
+      inbox: "消息", unread: (n) => `${n} 则未读`, none: "还没有对话。到「找玩伴」跟最佳配对的主人打个招呼吧。",
+      via: (mine) => `以 ${mine} 的名义`, with: (n) => `${n} 的主人`,
+      placeholder: "输入讯息…", send: "送出", sendFail: "没送出去，再试一次。", loadFail: "读取失败，请重新整理。",
+      empty: "还没有讯息，先打个招呼吧。", today: "今天",
     },
     check: {
       nav: "CHECK",
@@ -986,6 +1022,7 @@ const STR = {
       contact: "Owner email",
       reveal: "Tap to reveal",
       noEmail: "The owner didn't leave an email",
+      sayHi: "Say hi to the owner", needBind: "Link an email on the home page first to send messages.", opening: "Opening…", openFail: "Couldn't open the chat. Please try again later.",
       catNote: "Cats are territorial and direct meetings aren't recommended; use this match to swap cat-care tips with the owner instead.",
       fail: "Couldn't load. Please try again later.",
       score: (n) => `AI match ${n}`,
@@ -999,6 +1036,12 @@ const STR = {
         intactMales: "Both are intact males; take extra care at the first meeting",
         only: "The only other one in this city right now",
       },
+    },
+    chat: {
+      inbox: "Messages", unread: (n) => `${n} unread`, none: "No conversations yet. Find a playmate and say hi to the owner.",
+      via: (mine) => `as ${mine}`, with: (n) => `${n}'s owner`,
+      placeholder: "Type a message…", send: "Send", sendFail: "Not sent. Please try again.", loadFail: "Couldn't load. Please refresh.",
+      empty: "No messages yet. Say hi!", today: "Today",
     },
     check: {
       nav: "CHECK",
@@ -2037,10 +2080,13 @@ export default function PetJournal() {
     : <Login />;
   else if (loadErr) body = <div className="pp-notice">{L.auth.loadFail}</div>;
   else if (view.name === "form") body = <PetForm pet={current} onCancel={() => setView(current ? { name: "detail", id: current.id } : { name: "list" })} onSave={savePet} />;
-  else if (view.name === "mates" && current) body = <Playmates pet={current} allPets={pets} onBack={() => setView({ name: "detail", id: current.id })} />;
+  else if (view.name === "mates" && current) body = <Playmates pet={current} allPets={pets} canChat={!session.user.is_anonymous && !!session.user.email}
+    onChat={(conv) => setView({ name: "chat", conv, backTo: { name: "mates", id: current.id } })} onBack={() => setView({ name: "detail", id: current.id })} />;
+  else if (view.name === "inbox") body = <Inbox onOpen={(conv) => setView({ name: "chat", conv, backTo: { name: "inbox" } })} onBack={() => setView({ name: "list" })} />;
+  else if (view.name === "chat" && view.conv) body = <Chat conv={view.conv} me={session.user.id} onBack={() => setView(view.backTo || { name: "inbox" })} />;
   else if (view.name === "check" && current) body = <CheckProduct pet={current} onBack={() => setView({ name: "detail", id: current.id })} />;
   else if (view.name === "detail" && current) body = <Detail pet={current} onBack={() => setView({ name: "list" })} onEdit={() => setView({ name: "form", id: current.id })} onCheck={() => setView({ name: "check", id: current.id })} onMates={() => setView({ name: "mates", id: current.id })} onDelete={() => removePet(current.id)} onAdvice={saveAdviceFor} />;
-  else body = <List pets={pets} storageOk={storageOk} session={session} onLogout={logout} onOpen={(id) => setView({ name: "detail", id })} onAdd={() => setView({ name: "form" })} />;
+  else body = <List pets={pets} storageOk={storageOk} session={session} onLogout={logout} onInbox={() => setView({ name: "inbox" })} onOpen={(id) => setView({ name: "detail", id })} onAdd={() => setView({ name: "form" })} />;
 
   return (
     <LangCtx.Provider value={{ lang, L, setLang }}>
@@ -2217,7 +2263,7 @@ function LangToggle() {
 
 /* ---------------- 列表页 ---------------- */
 
-function List({ pets, onOpen, onAdd, storageOk, session, onLogout }) {
+function List({ pets, onOpen, onAdd, storageOk, session, onLogout, onInbox }) {
   const { lang, L } = useL();
   const [stats, setStats] = useState(null);
   const [samples, setSamples] = useState([]);
@@ -2248,6 +2294,7 @@ function List({ pets, onOpen, onAdd, storageOk, session, onLogout }) {
 
       {!storageOk && <div className="pp-alert warn">{L.storageWarn}</div>}
       {AUTH_MODE === "anonymous" && session && <AccountCard session={session} petCount={pets.length} onLogout={onLogout} />}
+      <InboxStrip onOpen={onInbox} />
 
       <div className="pp-body">
         {pets.length === 0 ? (
@@ -2756,6 +2803,167 @@ function CheckProduct({ pet, onBack }) {
 }
 
 /* 遮住的 Email：点一下遮罩淡出 */
+/* ---- v4.8.0 聊天 ---- */
+function fmtTime(iso, lang, T) {
+  const d = new Date(iso); if (isNaN(d)) return "";
+  const now = new Date();
+  const hm = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  const sameDay = d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+  return sameDay ? `${T.today} ${hm}` : `${d.getMonth() + 1}/${d.getDate()} ${hm}`;
+}
+
+/* 首页的「消息」列：有对话才出现；开页拉一次，之后每 30 秒、切回页面时再拉 */
+function InboxStrip({ onOpen }) {
+  const { L } = useL();
+  const T = L.chat;
+  const [rows, setRows] = useState([]);
+  useEffect(() => {
+    let alive = true;
+    const pull = () => loadInbox().then((r) => { if (alive) setRows(r); }).catch(() => {});
+    pull();
+    const t = setInterval(() => { if (document.visibilityState === "visible") pull(); }, 30000);
+    const onVis = () => { if (document.visibilityState === "visible") pull(); };
+    document.addEventListener("visibilitychange", onVis);
+    return () => { alive = false; clearInterval(t); document.removeEventListener("visibilitychange", onVis); };
+  }, []);
+  if (!rows.length) return null;
+  const unread = rows.reduce((s, r) => s + (r.unread || 0), 0);
+  return (
+    <button className="paper pp-inbox-strip" onClick={onOpen}>
+      <span>✉ {T.inbox}</span>
+      <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        {unread > 0 && <span className="badge">{T.unread(unread)}</span>}
+        <span className="arrow">→</span>
+      </span>
+    </button>
+  );
+}
+
+/* 收件匣：一列一个对话 */
+function Inbox({ onOpen, onBack }) {
+  const { lang, L } = useL();
+  const T = L.chat;
+  const [rows, setRows] = useState(null);
+  const [err, setErr] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    loadInbox().then((r) => { if (alive) setRows(r); }).catch(() => { if (alive) setErr(true); });
+    return () => { alive = false; };
+  }, []);
+  return (
+    <>
+      <nav className="pp-nav">
+        <button onClick={onBack}>{L.back}</button>
+        <span />
+        <div className="pp-nav-right"><LangToggle /></div>
+      </nav>
+      <div className="paper pp-tier" style={{ marginTop: 18 }}>
+        <span className="tape c" />
+        <h2 className="pp-tier-h">{T.inbox}</h2>
+      </div>
+      {err && <div className="pp-notice">{T.loadFail}</div>}
+      {!err && rows === null && <div className="pp-notice">{L.loading}</div>}
+      {rows && rows.length === 0 && <div className="pp-notice">{T.none}</div>}
+      {rows && rows.map((c) => (
+        <button className="paper pp-conv" key={c.id} onClick={() => onOpen(c)}>
+          <Photo src={c.other_pet_photo} species={c.other_species} breed={c.other_breed} />
+          <div className="body">
+            <div className="top"><span className="who">{c.other_pet_name}</span><span className="when">{fmtTime(c.last_at, lang, T)}</span></div>
+            <div className="pp-meta" style={{ marginTop: 0 }}>{T.with(c.other_pet_name)} · {T.via(c.my_pet_name)}</div>
+            <div className="prev">{c.last_preview || T.empty}</div>
+          </div>
+          {c.unread > 0 && <span className="dot" aria-label={T.unread(c.unread)} />}
+        </button>
+      ))}
+      <div style={{ height: 40 }} />
+    </>
+  );
+}
+
+/* 聊天室：气泡式；每 3 秒拉一次新讯息（只在页面看得见时），切回页面立刻拉；进来与收到新讯息时标已读 */
+function Chat({ conv, me, onBack }) {
+  const { lang, L } = useL();
+  const T = L.chat;
+  const [msgs, setMsgs] = useState(null);
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const lastId = useRef(0);
+  const loadedRef = useRef(false);
+  const bottomRef = useRef(null);
+
+  async function pull() {
+    try {
+      const rows = await loadMessages(conv.id, lastId.current);
+      if (rows.length) {
+        lastId.current = rows[rows.length - 1].id;
+        setMsgs((cur) => [...(cur || []), ...rows]);
+        if (rows.some((r) => r.sender_id !== me)) markRead(conv.id).catch(() => {});
+      } else if (!loadedRef.current) setMsgs([]);
+      loadedRef.current = true;
+    } catch { if (!loadedRef.current) setErr(T.loadFail); }
+  }
+  useEffect(() => {
+    lastId.current = 0; loadedRef.current = false; setMsgs(null); setErr("");
+    pull(); markRead(conv.id).catch(() => {});
+    const t = setInterval(() => { if (document.visibilityState === "visible") pull(); }, 3000);
+    const onVis = () => { if (document.visibilityState === "visible") pull(); };
+    document.addEventListener("visibilitychange", onVis);
+    return () => { clearInterval(t); document.removeEventListener("visibilitychange", onVis); };
+  }, [conv.id]);
+  useEffect(() => { bottomRef.current?.scrollIntoView({ block: "end" }); }, [msgs?.length]);
+
+  async function send() {
+    const body = text.trim();
+    if (!body || busy) return;
+    setBusy(true); setErr("");
+    try {
+      const row = await sendMessage(conv.id, body);
+      setText("");
+      if (row.id > lastId.current) { lastId.current = row.id; setMsgs((cur) => [...(cur || []), row]); }
+    } catch { setErr(T.sendFail); }
+    setBusy(false);
+  }
+  const touch = typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches; // 手机上 Enter 是换行，电脑上 Enter 送出
+
+  return (
+    <>
+      <nav className="pp-nav">
+        <button onClick={onBack}>{L.back}</button>
+        <span />
+        <div className="pp-nav-right"><LangToggle /></div>
+      </nav>
+      <div className="paper pp-chat-head">
+        <Photo src={conv.other_pet_photo} species={conv.other_species} breed={conv.other_breed} />
+        <div style={{ minWidth: 0 }}>
+          <h2 className="pp-name">{conv.other_pet_name}</h2>
+          <div className="pp-meta">{T.with(conv.other_pet_name)} · {T.via(conv.my_pet_name)}</div>
+        </div>
+      </div>
+      <div className="pp-chat">
+        {msgs === null && !err && <div className="pp-notice">{L.loading}</div>}
+        {err && msgs === null && <div className="pp-notice">{err}</div>}
+        {msgs && msgs.length === 0 && <div className="pp-notice" style={{ padding: "30px 24px" }}>{T.empty}</div>}
+        {msgs && msgs.map((m) => (
+          <div key={m.id} className={`pp-bubble${m.sender_id === me ? " me" : ""}`}>
+            <div>{m.body}</div>
+            <div className="ts">{fmtTime(m.created_at, lang, T)}</div>
+          </div>
+        ))}
+        <div ref={bottomRef} />
+      </div>
+      <div className="pp-chat-bar">
+        <textarea className="pp-textarea" rows={1} value={text} placeholder={T.placeholder} maxLength={1000}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !touch) { e.preventDefault(); send(); } }} />
+        <button className="pp-btn" onClick={send} disabled={busy || !text.trim()}>{T.send}</button>
+      </div>
+      {err && msgs !== null && <div className="pp-msg" style={{ margin: "0 16px" }}>{err}</div>}
+      <div style={{ height: 30 }} />
+    </>
+  );
+}
+
 function RevealEmail({ email, L }) {
   const [open, setOpen] = useState(false);
   return (
@@ -2768,11 +2976,23 @@ function RevealEmail({ email, L }) {
 
 /* ---------------- 寻找附近的玩伴 ---------------- */
 
-function Playmates({ pet, allPets, onBack }) {
+function Playmates({ pet, allPets, onBack, canChat, onChat }) {
   const { lang, L } = useL();
   const M = L.mates;
   const [rows, setRows] = useState(null);
   const [err, setErr] = useState(false);
+  const [chatMsg, setChatMsg] = useState(""); // v4.8.0 打招呼的状态文字
+  const [opening, setOpening] = useState(false);
+  async function sayHi(o) {
+    if (opening) return;
+    if (!canChat) { setChatMsg(M.needBind); return; }
+    setOpening(true); setChatMsg("");
+    try {
+      const id = await startConversation(pet.id, o.id);
+      onChat({ id, my_pet_id: pet.id, my_pet_name: pet.name, other_pet_id: o.id, other_pet_name: o.name, other_pet_photo: o.photo, other_species: o.species, other_breed: o.breed });
+    } catch { setChatMsg(M.openFail); }
+    setOpening(false);
+  }
 
   useEffect(() => {
     if (!pet.city) { setRows([]); return; }
@@ -2853,6 +3073,8 @@ function Playmates({ pet, allPets, onBack }) {
                 <div className="pp-mate-contact">
                   <div className="k">{M.contact}</div>
                   {o.ownerEmail ? <RevealEmail email={o.ownerEmail} L={L} /> : <span style={{ color: "var(--ink-soft)" }}>{M.noEmail}</span>}
+                  <button className="pp-btn" style={{ marginTop: 12 }} onClick={() => sayHi(o)} disabled={opening}>{opening ? M.opening : M.sayHi}</button>
+                  {chatMsg && <div className="pp-msg">{chatMsg}</div>}
                 </div>
               </>
             )}
