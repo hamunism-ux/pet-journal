@@ -93,6 +93,7 @@ import { loadPets, upsertPet, deletePet, saveAdvice, loadFoodCheck, saveFoodChec
 
    v3.10：必填改为名字、物种、品种、性别、生日、体重、结扎、城市；所有栏位标题粗体；生日精度到月份（存 YYYY-MM-01）。
 
+   v4.8.3：找玩伴页：AI 配对失败时不再默默退回规则版，改为显示黄色提示＋失败原因＋「再试一次」（之前只看到分数与理由不见了）。
    v4.8.2：消息卡片与聊天室标题改成「XX 的主人」，副标「曾与 YY 在 某城市 最佳配对」；对话开启时记下城市（migrate-v13），
       之后重新配对配不上或搬家，对话照样保留。
    v4.8.1：移除「主人 Email」：表单不再有这一栏（必填九项变八项）、宠物详情不显示、配对页不再露出对方 Email（改由聊天联络）。
@@ -712,6 +713,7 @@ const STR = {
       sayHi: "跟主人打个招呼", needBind: "先回首页绑定 Email，才能传讯息。", opening: "开启中…", openFail: "开不了对话，请稍后再试。",
       catNote: "猫是领域性动物，不建议直接见面；这里的配对比较适合用来和饲主交流养猫经验。",
       fail: "读取失败，请稍后再试。",
+      aiFail: "AI 配对暂时失败，先显示规则版（没有分数与理由）。原因：", retry: "再试一次",
       score: (n) => `AI 配对 ${n} 分`,
       r: {
         sameStage: (s) => `年龄阶段相同，都是${s}`,
@@ -1013,6 +1015,7 @@ const STR = {
       sayHi: "Say hi to the owner", needBind: "Link an email on the home page first to send messages.", opening: "Opening…", openFail: "Couldn't open the chat. Please try again later.",
       catNote: "Cats are territorial and direct meetings aren't recommended; use this match to swap cat-care tips with the owner instead.",
       fail: "Couldn't load. Please try again later.",
+      aiFail: "AI matching failed for now, showing the rule-based list (no scores or reasons). Reason:", retry: "Try again",
       score: (n) => `AI match ${n}`,
       r: {
         sameStage: (s) => `Same life stage: both ${s}`,
@@ -1542,16 +1545,23 @@ async function loadPlaymates(pet) {
     score: r.score, isMatch: !!r.is_match, reasons: r.reasons || null, aiScored,
     pro: r.pro || null, con: r.con || null,
   });
+  /* v4.8.3：AI 配对失败时不再默默退回规则版，而是把原因一起带回去显示在画面上（之前使用者只看到「分数和理由不见了」，无从排查） */
+  let aiErr = "";
   try {
     const { data, error } = await supabase.functions.invoke("match-playmates", { body: { pet_id: pet.id } });
-    if (error) throw error;
+    if (error) {
+      let detail = error.message || String(error);
+      try { const body = await error.context?.json?.(); if (body?.error) detail = body.error; } catch { /* 忽略 */ }
+      throw new Error(detail);
+    }
     if (!data || !Array.isArray(data.rows)) throw new Error(data?.error || "bad-response");
-    return data.rows.map((r) => mapRow(r, true));
-  } catch {
-    const { data, error } = await supabase.rpc("find_playmates", { p_pet_id: pet.id });
-    if (error) throw error;
-    return (data || []).map((r) => mapRow(r, false));
+    return { rows: data.rows.map((r) => mapRow(r, true)), aiErr: "" };
+  } catch (e) {
+    aiErr = e?.message || String(e);
   }
+  const { data, error } = await supabase.rpc("find_playmates", { p_pet_id: pet.id });
+  if (error) throw error;
+  return { rows: (data || []).map((r) => mapRow(r, false)), aiErr };
 }
 
 /* 全站统计：问资料库的 journal_stats()（不重复的 owner_id 数、宠物笔数），见 migrate-v5-stats.sql */
@@ -2957,6 +2967,8 @@ function Playmates({ pet, allPets, onBack, canChat, onChat }) {
   const M = L.mates;
   const [rows, setRows] = useState(null);
   const [err, setErr] = useState(false);
+  const [aiErr, setAiErr] = useState(""); // v4.8.3：AI 配对失败的原因（有的话画面会显示，并给「再试一次」）
+  const [tick, setTick] = useState(0);   // 按「再试一次」+1，重新跑一次
   const [chatMsg, setChatMsg] = useState(""); // v4.8.0 打招呼的状态文字
   const [opening, setOpening] = useState(false);
   async function sayHi(o) {
@@ -2973,9 +2985,10 @@ function Playmates({ pet, allPets, onBack, canChat, onChat }) {
   useEffect(() => {
     if (!pet.city) { setRows([]); return; }
     let alive = true;
-    loadPlaymates(pet, allPets).then((r) => { if (alive) setRows(r); }).catch(() => { if (alive) setErr(true); });
+    setRows(null); setErr(false); setAiErr("");
+    loadPlaymates(pet, allPets).then((r) => { if (alive) { setRows(r.rows); setAiErr(r.aiErr); } }).catch(() => { if (alive) setErr(true); });
     return () => { alive = false; };
-  }, [pet.id, pet.city]);
+  }, [pet.id, pet.city, tick]);
 
   const city = cityLabel(pet.city, lang);
 
@@ -3003,6 +3016,13 @@ function Playmates({ pet, allPets, onBack, canChat, onChat }) {
         <div className="pp-notice"><span className="pp-spin" style={{ width: 22, height: 22, borderWidth: 3, borderColor: "rgba(59,48,36,.2)", borderTopColor: "var(--ink)", marginRight: 10 }} />{M.loading}</div>
       )}
       {pet.city && !err && rows && rows.length === 0 && <div className="pp-notice">{M.none(city)}</div>}
+      {aiErr && rows && rows.length > 0 && (
+        <div className="pp-alert warn" style={{ marginTop: 14 }}>
+          {M.aiFail}
+          <div className="pp-src" style={{ marginTop: 4, wordBreak: "break-all" }}>{aiErr}</div>
+          <button className="pp-link" onClick={() => setTick((n) => n + 1)}>{M.retry}</button>
+        </div>
+      )}
 
       {rows && rows.map((o) => {
         const reasons = !o.isMatch ? [] : (o.reasons && (o.reasons[lang] || o.reasons.zh || o.reasons.en)?.length) ? (o.reasons[lang] || o.reasons.zh || o.reasons.en) : playmateReasons(pet, o, L, rows.length === 1);
