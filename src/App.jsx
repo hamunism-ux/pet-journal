@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, createContext, useContext } from "react";
+import { useState, useEffect, useRef, createContext, useContext, Fragment } from "react";
 import { BrowserMultiFormatReader, DecodeHintType, BarcodeFormat } from "@zxing/library";
 import { supabase, supabaseConfigured } from "./lib/supabase";
 import { AUTH_MODE } from "./config.js";
@@ -93,6 +93,10 @@ import { loadPets, upsertPet, deletePet, saveAdvice, loadFoodCheck, saveFoodChec
 
    v3.10：必填改为名字、物种、品种、性别、生日、体重、结扎、城市；所有栏位标题粗体；生日精度到月份（存 YYYY-MM-01）。
 
+   v4.6：商品检查改为「AI 报事实、规则算分」：AI 回一张事实勾选表（第一成分、副产品、填充、添加剂、完整均衡、
+      体重管理、关节、有害成分、过敏原命中…），App 依固定规则算出 安全30＋阶段与体型20＋成分品质30＋营养匹配20＝100 分与 A–D 等级，
+      结论也由分数决定（A/B 合适、C 还可以、D 不合适）。画面在结论下方多一张评分卡：总分圆章＋四条能量条＋扣分原因。改权重只改 scoreFood()，
+      旧快取会用新规则重算。快取指纹加版号（v4.5 的旧快取不再命中）。
    v4.5：商品检查结果快取＋AI 回答固定化。同一张照片（或同一段输入）＋同一只宠物（资料指纹没变）→ 直接用上次结果，
       不再呼叫 AI；「上网查证」的结果会覆盖快取。Netlify 版存在 food_checks 表（见 supabase/migrate-v10-food-checks.sql），
       artifact 版存 window.storage。Edge Function check-food 的 temperature 设为 0，不同照片、同一商品的结果也更稳定。
@@ -453,6 +457,26 @@ img.pp-photo{display:block;}
 .pp-ai .pp-verdict{font-size:18px;padding:11px 22px;margin-top:10px;}
 .pp-ai .pp-res{font-size:14.5px;line-height:1.85;padding-top:12px;}
 
+/* ---- v4.6 四面向评分卡 ---- */
+.pp-sc{display:flex;gap:14px;align-items:flex-start;padding:10px 16px 0;}
+.pp-sc-total{flex:none;width:66px;height:66px;border-radius:50%;border:3px solid var(--ok);background:#FFFDF8;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1;box-shadow:0 2px 4px rgba(59,48,36,.12);}
+.pp-sc-total b{font-family:var(--font-round);font-size:24px;font-weight:700;color:var(--ok);}
+.pp-sc-total i{font-style:normal;font-family:var(--font-type);font-size:10px;letter-spacing:.14em;color:var(--ink-soft);margin-top:3px;}
+.pp-sc-total[data-g="C"]{border-color:#C9A227;}
+.pp-sc-total[data-g="C"] b{color:#B08A2E;}
+.pp-sc-total[data-g="D"]{border-color:var(--berry);}
+.pp-sc-total[data-g="D"] b{color:var(--berry);}
+.pp-sc-rows{flex:1;min-width:0;display:grid;grid-template-columns:auto 1fr auto;column-gap:8px;row-gap:6px;align-items:center;margin-top:2px;}
+.pp-sc-rows .lbl{font-size:12px;color:var(--ink);white-space:nowrap;}
+.pp-sc-rows .bar{height:7px;background:var(--rule);border-radius:999px;overflow:hidden;}
+.pp-sc-rows .fill{height:100%;border-radius:999px;background:var(--ok);transition:width .6s ease;}
+.pp-sc-rows .fill[data-lv="mid"]{background:#C9A227;}
+.pp-sc-rows .fill[data-lv="low"]{background:var(--berry);}
+.pp-sc-rows .num{font-family:var(--font-type);font-size:10.5px;letter-spacing:.02em;color:var(--ink-soft);white-space:nowrap;}
+.pp-sc-note{grid-column:1 / -1;font-size:11px;color:var(--ink-soft);line-height:1.5;margin:-3px 0 1px;}
+.pp-sc-note::before{content:"· ";}
+
 /* ---- 检查商品 ---- */
 .pp-tier{margin:0 16px 18px;padding:16px 16px 14px;}
 .pp-tier-h{font-family:var(--font-round);font-size:15px;font-weight:700;margin:0 0 4px;}
@@ -654,7 +678,7 @@ const STR = {
       waitHint: "辨识商品并综合判断，约 5–15 秒。",
       photoFail: "辨识失败。请换一张更清楚的照片，或改用下面的方式。",
       aiTitle: "AI 综合判断",
-      aiVerdict: { ok: "合适", bad: "不合适", unsure: "不确定" },
+      aiVerdict: { ok: "合适", so: "还可以", bad: "不合适", unsure: "不确定" },
       aiConf: (c) => `辨识把握：${c}`,
       conf: { high: "高", medium: "中", low: "低" },
       aiSources: "参考来源",
@@ -666,6 +690,32 @@ const STR = {
       verifying: "查证中…",
       verifyHint: "AI 不太确定时才需要；会多花一点时间与费用。",
       aiNote: "AI 判断可能有误，有疑虑请问兽医。",
+      score: {
+        dims: { safety: "安全", stage: "阶段与体型", quality: "成分品质", nutrition: "营养匹配" },
+        sep: "、",
+        items: { first: "第一成分", byproducts: "副产品", fillers: "填充谷物", additives: "人工添加剂" },
+        notes: {
+          allergen: (x) => `含牠的过敏原：${x}`,
+          toxic: (x) => `含对牠有害的成分：${x}`,
+          species: "不是给这个物种的食品",
+          stageUnknown: "看不出适用年龄段",
+          stageMismatch: "适用年龄段与牠不符",
+          size: "适用体型与牠不符",
+          first_meat_meal: "第一成分是肉粉（可接受）",
+          first_generic_meat: "第一成分只写笼统的「肉类」",
+          first_grain: "第一成分是谷物或淀粉",
+          first_other: "第一成分不是肉类",
+          byproducts: "含副产品",
+          fillers: "含玉米、小麦或大豆",
+          additives: "含人工色素、香料或防腐剂",
+          unknown: (x) => `看不出：${x}`,
+          notComplete: "不是完整均衡的主食",
+          completeUnknown: "看不出是否完整均衡",
+          treat: "零食／保健品，不以主食标准评",
+          neutered: "已结扎，但不是体重管理配方",
+          senior: "老年，但没有关节保健成分",
+        },
+      },
       tier1: "② 输入条码",
       tier1d: "输入包装上的条码数字（通常 13 码），查询 Open Pet Food Facts。",
       barcodePh: "4712345678901",
@@ -915,7 +965,7 @@ const STR = {
       waitHint: "Identifying the product and judging. About 5–15 seconds.",
       photoFail: "Couldn't identify it. Try a clearer photo, or use one of the options below.",
       aiTitle: "AI verdict",
-      aiVerdict: { ok: "Suitable", bad: "Not suitable", unsure: "Unsure" },
+      aiVerdict: { ok: "Suitable", so: "Acceptable", bad: "Not suitable", unsure: "Unsure" },
       aiConf: (c) => `Identification confidence: ${c}`,
       conf: { high: "high", medium: "medium", low: "low" },
       aiSources: "Sources",
@@ -927,6 +977,32 @@ const STR = {
       verifying: "Verifying…",
       verifyHint: "Only needed when AI isn't sure; takes a little longer and costs a bit more.",
       aiNote: "AI can be wrong; ask your vet if in doubt.",
+      score: {
+        dims: { safety: "Safety", stage: "Stage & size", quality: "Ingredients", nutrition: "Nutrition fit" },
+        sep: ", ",
+        items: { first: "first ingredient", byproducts: "by-products", fillers: "fillers", additives: "additives" },
+        notes: {
+          allergen: (x) => `Contains a known allergen: ${x}`,
+          toxic: (x) => `Contains ingredients unsafe for this pet: ${x}`,
+          species: "Made for a different species",
+          stageUnknown: "Life stage not shown on the pack",
+          stageMismatch: "Life stage doesn't match this pet",
+          size: "Breed size doesn't match this pet",
+          first_meat_meal: "First ingredient is a meat meal (acceptable)",
+          first_generic_meat: "First ingredient is unnamed \"meat\"",
+          first_grain: "First ingredient is a grain or starch",
+          first_other: "First ingredient isn't meat",
+          byproducts: "Contains by-products",
+          fillers: "Contains corn, wheat or soy",
+          additives: "Contains artificial colours, flavours or preservatives",
+          unknown: (x) => `Couldn't tell: ${x}`,
+          notComplete: "Not a complete and balanced main food",
+          completeUnknown: "Couldn't tell if it's complete and balanced",
+          treat: "Treat / supplement, not judged as a main food",
+          neutered: "Neutered, but not a weight-control formula",
+          senior: "Senior, but no joint-support ingredients",
+        },
+      },
       tier1: "② Enter barcode",
       tier1d: "Type the barcode number on the pack (usually 13 digits) to look it up in Open Pet Food Facts.",
       barcodePh: "4712345678901",
@@ -1434,11 +1510,13 @@ Treat the owner's ingredient list as authoritative when given.`
 ${source}
 ${searchRule}
 
-Decide suitability for THIS pet, considering everything you know (allergies, species, life stage, neuter status, weight, and general nutritional fit): "bad" if any ingredient matches one of the pet's known allergies, or the product is made for a clearly different species or life stage; "ok" if you have the ingredients and none of those problems apply; "unsure" if you could not identify the product or its ingredients.
+Report the FACTS below from the label text when it is visible, otherwise from what you reliably know about this exact product. Use null or "unknown" for anything you cannot determine; never guess. The app computes the suitability score from these facts itself, so accuracy matters more than completeness.
+Definitions. first_ingredient: named_meat = a named fresh, dehydrated or freeze-dried meat or fish listed first (chicken, salmon, lamb...); meat_meal = a named meat meal listed first (chicken meal); generic_meat = unnamed "meat", "poultry" or "animal derivatives" first; grain = corn, wheat, rice or another cereal or starch first. byproducts = any by-products or animal derivatives anywhere in the list. fillers = corn, wheat or soy anywhere in the list. artificial_additives = artificial colours or flavours, or BHA, BHT or ethoxyquin. complete_balanced = labelled as a complete and balanced main food (AAFCO or FEDIAF). size_target = the dog size the food is made for. weight_control = light, weight-management or neutered formula. joint_support = glucosamine, chondroitin or green-lipped mussel. toxic_ingredients = ingredients actually present that are widely recognised as unsafe for this species (onion, garlic, grapes, raisins, xylitol, chocolate, macadamia...). allergen_hits = which of the pet's known_allergies appear in the ingredients, using the exact names from the profile.
+verdict: "unsure" if you could not identify the product or its ingredients; otherwise your own overall "ok" or "bad" (used only as a fallback).
 
 Output exactly ONE fenced json block in this shape and nothing else, no explanation before or after:
 \`\`\`json
-{"product":{"name":"","brand":"","ingredients":["main ingredients, at most 15"],"stage":"young|adult|senior|all|unknown","confidence":"high|medium|low"},"verdict":"ok|bad|unsure","reasons":{"zh":"2-3 short sentences in Simplified Chinese addressed to the owner, naming the ingredient or stage behind the verdict and one practical note","en":"the same 2-3 sentences in English"},"sources":["https://..."]}
+{"product":{"name":"","brand":"","type":"dry|wet|treat|supplement|other|unknown","ingredients":["main ingredients, at most 15"],"stage":"young|adult|senior|all|unknown","confidence":"high|medium|low"},"facts":{"species_on_pack":"dog|cat|both|unknown","first_ingredient":"named_meat|meat_meal|generic_meat|grain|other|unknown","byproducts":true|false|null,"fillers":true|false|null,"artificial_additives":true|false|null,"complete_balanced":true|false|null,"size_target":"small|medium|large|all|unknown","weight_control":true|false|null,"joint_support":true|false|null,"toxic_ingredients":[],"allergen_hits":[]},"verdict":"ok|bad|unsure","reasons":{"zh":"2-3 short sentences in Simplified Chinese addressed to the owner, naming the facts that matter most for this pet (allergen, life stage, first ingredient...) and one practical note","en":"the same 2-3 sentences in English"},"sources":["https://..."]}
 \`\`\``;
 }
 
@@ -1449,6 +1527,23 @@ function extractJson(text) {
   const i = text.indexOf("{"), j = text.lastIndexOf("}");
   if (i >= 0 && j > i) return JSON.parse(text.slice(i, j + 1));
   throw new Error("no-json");
+}
+
+/* v4.6：把 AI 回的「事实勾选表」整理干净（只接受规定的值，其他一律当 unknown / null） */
+function normFacts(f) {
+  if (!f || typeof f !== "object") return null;
+  const oneOf = (v, list) => (list.includes(v) ? v : "unknown");
+  const tri = (v) => (v === true || v === "true" ? true : v === false || v === "false" ? false : null);
+  const arr = (v) => (Array.isArray(v) ? v.map((x) => String(x).trim()).filter(Boolean).slice(0, 8) : []);
+  return {
+    species: oneOf(f.species_on_pack, ["dog", "cat", "both"]),
+    first: oneOf(f.first_ingredient, ["named_meat", "meat_meal", "generic_meat", "grain", "other"]),
+    byproducts: tri(f.byproducts), fillers: tri(f.fillers), additives: tri(f.artificial_additives),
+    complete: tri(f.complete_balanced),
+    size: oneOf(f.size_target, ["small", "medium", "large", "all"]),
+    weightControl: tri(f.weight_control), joint: tri(f.joint_support),
+    toxic: arr(f.toxic_ingredients), allergens: arr(f.allergen_hits),
+  };
 }
 
 /* 共用：把 AI 回覆整理成 app 用的格式 */
@@ -1464,6 +1559,79 @@ function normalizeFoodResult(j) {
     reasons: { zh: String(r.zh || r.en || ""), en: String(r.en || r.zh || "") },
     confidence: ["high", "medium", "low"].includes(p.confidence) ? p.confidence : "low",
     sources: Array.isArray(j.sources) ? j.sources.filter((u) => /^https?:\/\//.test(u)).slice(0, 3) : [],
+    type: ["dry", "wet", "treat", "supplement", "other"].includes(p.type) ? p.type : "unknown",
+    facts: j.verdict === "unsure" ? null : normFacts(j.facts), // AI 认不出商品时没有事实可算分
+  };
+}
+
+/* ---- v4.6 四面向评分：AI 只报「事实勾选表」，分数由这里的规则算 ----
+   为什么不让 AI 直接给分：AI 对「有没有玉米」很少犹豫，对「几分」永远犹豫。规则写死，同样的事实永远算出同样的分数，
+   而且好商品与差商品的分数会明显拉开。改权重只改这里；旧的快取结果会用新规则重算，不必重新呼叫 AI。
+   满分 100 ＝ 安全 30 ＋ 阶段与体型 20 ＋ 成分品质 30 ＋ 营养匹配 20。
+   门槛：命中过敏原／有害成分／物种不对 → 总分最高 20；幼犬幼猫吃成年或老年粮 → 最高 50。
+   等级 A ≥ 85、B ≥ 70、C ≥ 55、D < 55；结论 A/B「合适」、C「还可以」、D「不合适」。 */
+function scoreFood(pet, r) {
+  const f = r && r.facts;
+  if (!f) return null;
+  const notes = { safety: [], stage: [], quality: [], nutrition: [] }; // 每条 = [字典键, 参数]
+  let gate = null;
+  /* 安全（门槛项）：30 或 0 */
+  let safety = 30;
+  if (f.allergens.length) { safety = 0; gate = "allergen"; notes.safety.push(["allergen", f.allergens.join(", ")]); }
+  else if (f.toxic.length) { safety = 0; gate = "toxic"; notes.safety.push(["toxic", f.toxic.join(", ")]); }
+  else if (f.species !== "unknown" && f.species !== "both" && f.species !== pet.species) { safety = 0; gate = "species"; notes.safety.push(["species"]); }
+  /* 阶段与体型：吻合或全龄 20、看不出 12、不符 5～10；狗的体型明显不合再 −5 */
+  const petStage = lifeStage(pet);
+  let stage = 20;
+  if (r.stage === "unknown") { stage = 12; notes.stage.push(["stageUnknown"]); }
+  else if (r.stage !== "all" && r.stage !== petStage) {
+    // 牵涉幼年（幼犬幼猫吃成年粮，或成年老年吃高热量的幼年粮）扣得重；成年↔老年互吃只扣一半
+    stage = petStage === "young" || r.stage === "young" ? 5 : 10;
+    notes.stage.push(["stageMismatch"]);
+    if (petStage === "young" && !gate) gate = "young";
+  }
+  if (pet.species === "dog") {
+    const w = Number(pet.weightKg) || 0;
+    const cls = !w ? null : w < 10 ? "small" : w > 25 ? "large" : "medium";
+    if (cls && ["small", "medium", "large"].includes(f.size) && f.size !== cls) { stage = Math.max(0, stage - 5); notes.stage.push(["size"]); }
+  }
+  /* 成分品质：第一成分 12 ＋ 无副产品 6 ＋ 无填充 6 ＋ 无人工添加 6（看不出的项目给一半） */
+  const firstPts = { named_meat: 12, meat_meal: 10, generic_meat: 4, grain: 0, other: 0, unknown: 6 };
+  let quality = firstPts[f.first] ?? 6;
+  const unknown = [];
+  if (f.first === "unknown") unknown.push("first"); else if (f.first !== "named_meat") notes.quality.push(["first_" + f.first]);
+  for (const [k, v] of [["byproducts", f.byproducts], ["fillers", f.fillers], ["additives", f.additives]]) {
+    if (v === false) quality += 6;
+    else if (v === null) { quality += 3; unknown.push(k); }
+    else notes.quality.push([k]);
+  }
+  if (unknown.length) notes.quality.push(["unknown", unknown]);
+  /* 营养匹配：只算适用于这只宠物的项目，再按比例换成 20 分 */
+  let earned = 0, possible = 0;
+  const treat = r.type === "treat" || r.type === "supplement";
+  if (treat) notes.nutrition.push(["treat"]);
+  else {
+    possible += 8;
+    if (f.complete === true) earned += 8;
+    else if (f.complete === null) { earned += 4; notes.nutrition.push(["completeUnknown"]); }
+    else { earned += 2; notes.nutrition.push(["notComplete"]); }
+  }
+  if (pet.neutered) { possible += 6; if (f.weightControl === true) earned += 6; else if (f.weightControl === null) earned += 3; else notes.nutrition.push(["neutered"]); }
+  if (petStage === "senior") { possible += 6; if (f.joint === true) earned += 6; else if (f.joint === null) earned += 3; else notes.nutrition.push(["senior"]); }
+  const nutrition = possible ? Math.round((20 * earned) / possible) : 20;
+  /* 总分、门槛、等级 */
+  let overall = safety + stage + quality + nutrition;
+  if (gate === "young") overall = Math.min(overall, 50);
+  else if (gate) overall = Math.min(overall, 20);
+  const grade = overall >= 85 ? "A" : overall >= 70 ? "B" : overall >= 55 ? "C" : "D";
+  return {
+    overall, grade, gate, verdict: grade === "D" ? "bad" : grade === "C" ? "so" : "ok", // D 不合适、C 还可以、A/B 合适
+    dims: [
+      { key: "safety", score: safety, max: 30, notes: notes.safety },
+      { key: "stage", score: stage, max: 20, notes: notes.stage },
+      { key: "quality", score: quality, max: 30, notes: notes.quality },
+      { key: "nutrition", score: nutrition, max: 20, notes: notes.nutrition },
+    ],
   };
 }
 /* ---- v4.5 商品检查结果快取 ----
@@ -1483,6 +1651,7 @@ async function hashFile(file) {
 /* 会影响判断的宠物资料：物种、品种、生命阶段、整数体重、结扎、过敏原（和送给 AI 的资料一致） */
 function foodCheckKey(pet) {
   return JSON.stringify({
+    v: 2, // 快取版号：AI 回传格式变了就加一，旧快取自然失效（v2 = v4.6 事实勾选表）
     sp: pet.species, br: breedKey(pet.species, pet.breed), st: lifeStage(pet),
     w: Math.round(Number(pet.weightKg) || 0), n: !!pet.neutered, al: [...(pet.allergies || [])].sort(),
   });
@@ -1503,7 +1672,7 @@ async function judgeFoodWithAI(product, pet, L, webSearch = false) {
 async function foodCheckRequest(b64, prompt, system, opts = {}) {
   const { data, error } = await supabase.functions.invoke("check-food", { body: {
     image: b64 || null, prompt, system, web_search: !!opts.webSearch, max_searches: opts.maxSearches || 2,
-    max_tokens: opts.maxTokens || (opts.webSearch ? 900 : 600),
+    max_tokens: opts.maxTokens || (opts.webSearch ? 1100 : 800),
     model: opts.model || "default", // "fast" = 便宜快速的模型，给要反复看的页面用
   } });
   if (error) {
@@ -2104,6 +2273,30 @@ function Row({ k, v }) { return <div className="pp-row"><dt>{k}</dt><dd>{v}</dd>
 
 /* ---------------- 检查商品 ---------------- */
 
+/* v4.6 评分卡：左边总分圆章（A/B 绿、C 黄、D 莓红），右边四个面向的能量条；有扣分的面向下方一行原因 */
+function ScoreCard({ sc, C }) {
+  const N = C.score.notes;
+  const text = (n) => (n[0] === "unknown" ? N.unknown(n[1].map((k) => C.score.items[k]).join(C.score.sep)) : typeof N[n[0]] === "function" ? N[n[0]](n[1]) : N[n[0]]);
+  return (
+    <div className="pp-sc">
+      <div className="pp-sc-total" data-g={sc.grade}><b>{sc.overall}</b><i>{sc.grade}</i></div>
+      <div className="pp-sc-rows">
+        {sc.dims.map((d) => {
+          const ratio = d.score / d.max;
+          return (
+            <Fragment key={d.key}>
+              <span className="lbl">{C.score.dims[d.key]}</span>
+              <div className="bar"><div className="fill" data-lv={ratio >= 0.8 ? "high" : ratio >= 0.5 ? "mid" : "low"} style={{ width: `${Math.max(3, Math.round(ratio * 100))}%` }} /></div>
+              <span className="num">{d.score}/{d.max}</span>
+              {d.notes.map((n, i) => <div key={i} className="pp-sc-note">{text(n)}</div>)}
+            </Fragment>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function CheckProduct({ pet, onBack }) {
   const { lang, L } = useL();
   const C = L.check;
@@ -2131,7 +2324,9 @@ function CheckProduct({ pet, onBack }) {
     if (!hash || !r) return;
     try { await saveFoodCheck(pet.id, hash, petKey, r); } catch { /* 存不进去也没关系 */ }
   }
-  const toAi = (r) => ({ verdict: r.verdict, reasons: r.reasons, confidence: r.confidence, sources: r.sources || [], searched: !!r.searched });
+  const toAi = (r) => ({ ...r, sources: r.sources || [], searched: !!r.searched });
+  const sc = ai ? scoreFood(pet, ai) : null; // v4.6 四面向评分；AI 认不出商品（没有事实）或 v4.5 的旧结果就没有评分卡
+  const aiVerdict = sc ? sc.verdict : ai?.verdict; // 有评分就由分数决定结论，否则用 AI 自己的结论
   async function onVerify() {
     const last = lastFoodRef.current;
     if (!last || busy) return;
@@ -2276,7 +2471,8 @@ function CheckProduct({ pet, onBack }) {
         <div className="paper pp-annex pp-ai" style={{ paddingBottom: 6 }}>
           <span className="tape c" />
           <div className="pp-annex-h"><span className="pp-h">{C.aiTitle}</span><em>AI</em></div>
-          <div className={`pp-verdict ${ai.verdict === "bad" ? "bad" : ai.verdict === "ok" ? "" : "mid"}`}>{C.aiVerdict[ai.verdict]}</div>
+          <div className={`pp-verdict ${aiVerdict === "bad" ? "bad" : aiVerdict === "ok" ? "" : "mid"}`}>{C.aiVerdict[aiVerdict]}</div>
+          {sc && <ScoreCard sc={sc} C={C} />}
           <div className="pp-res">
             <div>{ai.reasons[lang] || ai.reasons.zh || ai.reasons.en}</div>
             <div className="pp-src" style={{ marginTop: 8 }}>{C.aiConf(C.conf[ai.confidence])}</div>
@@ -2286,7 +2482,7 @@ function CheckProduct({ pet, onBack }) {
               </div>
             )}
           </div>
-          {!ai.searched && (ai.verdict === "unsure" || ai.confidence === "low") && (
+          {!ai.searched && (aiVerdict === "unsure" || ai.confidence === "low") && (
             <div style={{ padding: "4px 16px 12px" }}>
               <button className="pp-btn-ghost" onClick={onVerify} disabled={!!busy}>{busy === "verify" ? <><span className="pp-spin" style={{ borderColor: "rgba(59,48,36,.2)", borderTopColor: "var(--ink)" }} />{C.verifying}</> : C.verifyBtn}</button>
               <div className="pp-hint">{C.verifyHint}</div>
