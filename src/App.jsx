@@ -93,6 +93,8 @@ import { loadPets, upsertPet, deletePet, saveAdvice, loadFoodCheck, saveFoodChec
 
    v3.10：必填改为名字、物种、品种、性别、生日、体重、结扎、城市；所有栏位标题粗体；生日精度到月份（存 YYYY-MM-01）。
 
+   v4.6.2：表单的出生年月改成「年」「月」两个下拉选单（所有桌机与手机浏览器都支援）。
+      原本的 <input type="month"> 在桌机 Safari／Firefox 不支援，退化成一个打字就被清空的白框，使用者以为坏了。
    v4.6.1：评分卡的扣分原因改放在下方整体描述里（「扣分原因：…」一句话），能量条下面不再有小字；
       打开时圆环与能量条从 0 长到分数、总分数字往上数。零食／保健品的营养匹配改为固定 14（有对应配方才 20），不再因为「不是体重管理配方」被扣到 0。
    v4.6：商品检查改为「AI 报事实、规则算分」：AI 回一张事实勾选表（第一成分、副产品、填充、添加剂、完整均衡、
@@ -486,7 +488,7 @@ img.pp-photo{display:block;}
 .pp-tier-h{font-family:var(--font-round);font-size:15px;font-weight:700;margin:0 0 4px;}
 .pp-tier-d{font-size:12.5px;color:var(--ink-soft);line-height:1.7;margin:0 0 12px;}
 .pp-inline{display:flex;gap:8px;}
-.pp-inline .pp-input{flex:1;}
+.pp-inline .pp-input,.pp-inline .pp-select{flex:1;min-width:0;}
 .pp-inline .pp-btn{width:auto;padding:12px 16px;font-size:14px;}
 .pp-msg{font-size:12.5px;color:var(--berry);margin-top:10px;line-height:1.7;}
 .pp-msg.soft{color:var(--ink-soft);}
@@ -768,7 +770,7 @@ const STR = {
       species: "物种", dog: "犬", cat: "猫",
       breed: "品种", pick: "请选择", breedOtherPh: "请输入品种",
       gender: "性别", male: "公", female: "母",
-      birthday: "出生年月", birthdayHint: "不确定就填领养的月份。",
+      birthday: "出生年月", birthdayHint: "不确定就填领养的月份。", year: "年", month: "月", yearLabel: (y) => `${y} 年`, monthLabel: (m) => `${Number(m)} 月`,
       weight: "体重（公斤）", weightHint: "拉到大概的位置，再用 −／＋ 微调。", weightClear: "清除",
       neutered: "结扎状态", yes: "已结扎", no: "未结扎",
       allergies: "已知过敏原",
@@ -1055,7 +1057,7 @@ const STR = {
       species: "Species", dog: "Dog", cat: "Cat",
       breed: "Breed", pick: "Select", breedOtherPh: "Enter breed",
       gender: "Sex", male: "Male", female: "Female",
-      birthday: "Birth month", birthdayHint: "Not sure? Use the adoption month.",
+      birthday: "Birth month", birthdayHint: "Not sure? Use the adoption month.", year: "Year", month: "Month", yearLabel: (y) => y, monthLabel: (m) => ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][Number(m) - 1],
       weight: "Weight (kg)", weightHint: "Drag to roughly the right spot, then fine-tune with − / +.", weightClear: "Clear",
       neutered: "Neutered", yes: "Yes", no: "No",
       allergies: "Known allergies",
@@ -2727,6 +2729,13 @@ function PetForm({ pet, onSave, onCancel }) {
   const [breedOther, setBreedOther] = useState(() => !!(f.breed && !breedTable[f.breed]));
   const breedSel = breedOther ? "other" : breedTable[f.breed] ? f.breed : "";
   const set = (k, v) => setF((s) => ({ ...s, [k]: v }));
+  /* v4.6.2 出生年月改成「年」「月」两个下拉：<input type="month"> 在桌机 Safari／Firefox 不支援，会退化成一个没反应的白框。
+     年、月各自记着，两个都选了才写进 birthday（YYYY-MM-01）；选了年还没选月时年份不会跑掉。 */
+  const [bdY, setBdY] = useState(() => (f.birthday || "").slice(0, 4));
+  const [bdM, setBdM] = useState(() => (f.birthday || "").slice(5, 7));
+  const thisYear = Number(today.slice(0, 4)), thisMonth = Number(today.slice(5, 7));
+  const years = Array.from({ length: 26 }, (_, i) => String(thisYear - i)); // 今年往回 25 年
+  const pickBd = (y, m) => { setBdY(y); setBdM(m); set("birthday", y && m ? `${y}-${m}-01` : ""); };
 
   function changeSpecies(sp) {
     setF((s) => ({ ...s, species: sp, breed: breedOther || BREEDS[sp][s.breed] ? s.breed : "",
@@ -2845,8 +2854,18 @@ function PetForm({ pet, onSave, onCancel }) {
 
           <div className="pp-field">
             <label className="pp-label" htmlFor="bd">{F.birthday}<i>*</i></label>
-            <input id="bd" className="pp-input" type="month" max={today.slice(0, 7)} value={(f.birthday || "").slice(0, 7)} placeholder="2022-03"
-              onChange={(e) => { const v = e.target.value.trim(); set("birthday", /^\d{4}-\d{2}$/.test(v) ? v + "-01" : ""); }} />
+            <div className="pp-inline">
+              <select id="bd" className="pp-select" value={bdY} onChange={(e) => pickBd(e.target.value, bdM)}>
+                <option value="">{F.year}</option>
+                {years.map((y) => <option key={y} value={y}>{F.yearLabel(y)}</option>)}
+              </select>
+              <select className="pp-select" aria-label={F.month} value={bdM} onChange={(e) => pickBd(bdY, e.target.value)}>
+                <option value="">{F.month}</option>
+                {Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, "0")).map((m) => (
+                  <option key={m} value={m} disabled={Number(bdY) === thisYear && Number(m) > thisMonth}>{F.monthLabel(m)}</option>
+                ))}
+              </select>
+            </div>
             <div className="pp-hint">{F.birthdayHint}</div>
           </div>
 
