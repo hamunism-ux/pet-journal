@@ -93,6 +93,8 @@ import { loadPets, upsertPet, deletePet, saveAdvice, loadFoodCheck, saveFoodChec
 
    v3.10：必填改为名字、物种、品种、性别、生日、体重、结扎、城市；所有栏位标题粗体；生日精度到月份（存 YYYY-MM-01）。
 
+   v4.8.4：修「sign in required」：① 登出改成只登出这台装置（原本会把所有装置一起登出，害另一台的凭证失效）；
+      ② 呼叫 AI 前若凭证失效，先自动换一张新的再重试；换不到就提示「重新整理、再登入一次」；③ 凭证被收回时自动重新整理。
    v4.8.3：找玩伴页：AI 配对失败时不再默默退回规则版，改为显示黄色提示＋失败原因＋「再试一次」（之前只看到分数与理由不见了）。
    v4.8.2：消息卡片与聊天室标题改成「XX 的主人」，副标「曾与 YY 在 某城市 最佳配对」；对话开启时记下城市（migrate-v13），
       之后重新配对配不上或搬家，对话照样保留。
@@ -584,6 +586,7 @@ const STR = {
       bindOk: "绑定完成！", loginOk: "登入完成！",
       emailExists: "这个 Email 已经有账号了。", useLogin: "改用它登入",
       codeErr: "验证码不对或已过期，请再试一次。", sendErr: "寄送失败：", resend: "没收到？重寄",
+      sessionDead: "这台装置的登入已失效（可能在别的装置登出过）。请重新整理；如果宠物不见了，用「已有账号？登入」再登入一次就会回来。", reload: "重新整理",
     },
     issued: (n) => `${n} 位家庭成员`,
     notIssued: "还没有家庭成员",
@@ -886,6 +889,7 @@ const STR = {
       bindOk: "Linked!", loginOk: "Signed in!",
       emailExists: "This email already has an account.", useLogin: "Sign in with it instead",
       codeErr: "Wrong or expired code. Please try again.", sendErr: "Couldn't send: ", resend: "Didn't get it? Resend",
+      sessionDead: "This device's sign-in has expired (maybe you signed out on another device). Refresh; if your pets are gone, use \"Have an account? Sign in\" to get them back.", reload: "Refresh",
     },
     issued: (n) => `${n} family member${n === 1 ? "" : "s"}`,
     notIssued: "No family members yet",
@@ -1548,12 +1552,7 @@ async function loadPlaymates(pet) {
   /* v4.8.3：AI 配对失败时不再默默退回规则版，而是把原因一起带回去显示在画面上（之前使用者只看到「分数和理由不见了」，无从排查） */
   let aiErr = "";
   try {
-    const { data, error } = await supabase.functions.invoke("match-playmates", { body: { pet_id: pet.id } });
-    if (error) {
-      let detail = error.message || String(error);
-      try { const body = await error.context?.json?.(); if (body?.error) detail = body.error; } catch { /* 忽略 */ }
-      throw new Error(detail);
-    }
+    const data = await invokeFn("match-playmates", { pet_id: pet.id });
     if (!data || !Array.isArray(data.rows)) throw new Error(data?.error || "bad-response");
     return { rows: data.rows.map((r) => mapRow(r, true)), aiErr: "" };
   } catch (e) {
@@ -1760,18 +1759,38 @@ async function judgeFoodWithAI(product, pet, L, webSearch = false) {
 
 /* Netlify 版：交给 Supabase Edge Function「check-food」；b64 为 null 时只送文字；预设不上网，opts.webSearch 才开。
    见 supabase/functions/check-food/index.ts */
+/* v4.8.4：Edge Function 回「sign in required」＝这台装置上的登入凭证在伺服器那边已经失效
+   （最常见：在别的装置按了登出，旧版会把所有装置一起登出）。先试着换一张新凭证，换到了就让呼叫端重试一次；
+   换不到就丢 "session-dead"，画面上会提示重新整理再登入。 */
+const isAuthErr = (msg) => /sign in required|invalid jwt|jwt|401|unauthorized/i.test(String(msg || ""));
+async function recoverSession() {
+  try { const { data, error } = await supabase.auth.refreshSession(); return !error && !!data?.session; } catch { return false; }
+}
+async function invokeFn(name, body) {
+  const once = async () => {
+    const { data, error } = await supabase.functions.invoke(name, { body });
+    if (error) {
+      /* supabase.functions.invoke 把伺服器回的 JSON 放在 context 里，挖出来才看得到真正原因 */
+      let detail = error.message || String(error);
+      try { const b = await error.context?.json?.(); if (b?.error) detail = b.error; } catch { /* 忽略 */ }
+      throw new Error(detail);
+    }
+    return data;
+  };
+  try { return await once(); }
+  catch (e) {
+    if (!isAuthErr(e?.message)) throw e;
+    if (await recoverSession()) return once(); // 换到新凭证：重试一次
+    throw new Error("session-dead");
+  }
+}
+
 async function foodCheckRequest(b64, prompt, system, opts = {}) {
-  const { data, error } = await supabase.functions.invoke("check-food", { body: {
+  const data = await invokeFn("check-food", {
     image: b64 || null, prompt, system, web_search: !!opts.webSearch, max_searches: opts.maxSearches || 2,
     max_tokens: opts.maxTokens || (opts.webSearch ? 1100 : 800),
-    model: opts.model || "default", // "fast" = 便宜快速的模型，给要反复看的页面用
-  } });
-  if (error) {
-    /* supabase.functions.invoke 把后端的错误内容藏在 context 里，尽量挖出来给画面看 */
-    let detail = error.message || String(error);
-    try { const body = await error.context?.json?.(); if (body?.error) detail = body.error; } catch { /* 忽略 */ }
-    throw new Error(detail);
-  }
+    model: opts.model || "default", // "fast" = 用便宜快速的模型（三栏建议用）
+  });
   if (!data || typeof data.text !== "string") throw new Error(data?.error || "no-text");
   return data.text;
 }
@@ -2026,7 +2045,10 @@ export default function PetJournal() {
       const { data: a, error } = await supabase.auth.signInAnonymously();
       if (error || !a.session) { setAnonErr((error && (error.message || String(error))) || "no session returned"); setSession(null); } else setSession(a.session);
     }).catch((e) => { setAnonErr(e?.message || String(e)); setSession(null); });
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => { if (s) setSession(s); });
+    const { data: sub } = supabase.auth.onAuthStateChange((event, s) => {
+      if (s) setSession(s);
+      else if (event === "SIGNED_OUT") location.reload(); // 凭证被收回（例如在别的装置登出）：重新整理，回到干净状态
+    });
     return () => sub.subscription.unsubscribe();
   }, []);
 
@@ -2065,7 +2087,7 @@ export default function PetJournal() {
     setPets((cur) => cur.map((p) => (p.id === id ? { ...p, advice, adviceKey: key } : p)));
     try { await saveAdvice(id, advice, key); } catch { /* 存不进去下次会再生成一次，不影响画面 */ }
   }
-  async function logout() { try { await supabase.auth.signOut(); } catch { /* 忽略 */ } location.reload(); } // 重新整理后会自动再开一个访客帐号
+  async function logout() { try { await supabase.auth.signOut({ scope: "local" }); } catch { /* 忽略 */ } location.reload(); } // 只登出这台装置；重新整理后会自动再开一个访客帐号
 
   const current = pets.find((p) => p.id === view.id);
 
@@ -2667,7 +2689,7 @@ function CheckProduct({ pet, onBack }) {
               <input ref={frontFileRef} type="file" accept="image/*" onChange={onFrontPhoto} style={{ display: "none" }} />
             </div>
             {busy === "food" && <div className="pp-wait"><span className="pp-spin" />{C.waitHint}</div>}
-            {msg === C.photoFail && <div className="pp-msg">{msg}{aiErr && <div className="pp-src" style={{ marginTop: 4, wordBreak: "break-all" }}>{aiErr}</div>}</div>}
+            {msg === C.photoFail && <div className="pp-msg">{msg}{aiErr && <div className="pp-src" style={{ marginTop: 4, wordBreak: "break-all" }}>{aiErr === "session-dead" ? L.auth.sessionDead : aiErr}</div>}</div>}
           </div>
 
           <div className="paper pp-tier">
@@ -2769,7 +2791,7 @@ function CheckProduct({ pet, onBack }) {
                 {busy === "judge" ? <><span className="pp-spin" />{C.judging}</> : C.judgeBtn}
               </button>
               <div className="pp-hint">{C.judgeHint}</div>
-              {msg === C.judgeFail && <div className="pp-msg">{msg}{aiErr && <div className="pp-src" style={{ marginTop: 4, wordBreak: "break-all" }}>{aiErr}</div>}</div>}
+              {msg === C.judgeFail && <div className="pp-msg">{msg}{aiErr && <div className="pp-src" style={{ marginTop: 4, wordBreak: "break-all" }}>{aiErr === "session-dead" ? L.auth.sessionDead : aiErr}</div>}</div>}
             </div>
           )}
           <button className="pp-btn-ghost" onClick={() => { setProd(null); setPicked([]); setAi(null); setMsg(""); setAiErr(""); }}>{C.clear}</button>
@@ -3018,9 +3040,8 @@ function Playmates({ pet, allPets, onBack, canChat, onChat }) {
       {pet.city && !err && rows && rows.length === 0 && <div className="pp-notice">{M.none(city)}</div>}
       {aiErr && rows && rows.length > 0 && (
         <div className="pp-alert warn" style={{ marginTop: 14 }}>
-          {M.aiFail}
-          <div className="pp-src" style={{ marginTop: 4, wordBreak: "break-all" }}>{aiErr}</div>
-          <button className="pp-link" onClick={() => setTick((n) => n + 1)}>{M.retry}</button>
+          {aiErr === "session-dead" ? L.auth.sessionDead : (<>{M.aiFail}<div className="pp-src" style={{ marginTop: 4, wordBreak: "break-all" }}>{aiErr}</div></>)}
+          <button className="pp-link" onClick={() => (aiErr === "session-dead" ? location.reload() : setTick((n) => n + 1))}>{aiErr === "session-dead" ? L.auth.reload : M.retry}</button>
         </div>
       )}
 
