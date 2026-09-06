@@ -93,6 +93,8 @@ import { loadPets, upsertPet, deletePet, saveAdvice, loadFoodCheck, saveFoodChec
 
    v3.10：必填改为名字、物种、品种、性别、生日、体重、结扎、城市；所有栏位标题粗体；生日精度到月份（存 YYYY-MM-01）。
 
+   v4.8.2：消息卡片与聊天室标题改成「XX 的主人」，副标「曾与 YY 在 某城市 最佳配对」；对话开启时记下城市（migrate-v13），
+      之后重新配对配不上或搬家，对话照样保留。
    v4.8.1：移除「主人 Email」：表单不再有这一栏（必填九项变八项）、宠物详情不显示、配对页不再露出对方 Email（改由聊天联络）。
       资料库栏位 owner_email 保留但不再读写；Edge Function match-playmates 与 find_playmates() 不再回传 Email（migrate-v12）。
    v4.8.0：纯文字聊天（第二步）。找玩伴页的最佳配对多一颗「跟主人打个招呼」：绑定 Email 的正式帐号才能开对话，
@@ -724,7 +726,7 @@ const STR = {
     },
     chat: {
       inbox: "消息", unread: (n) => `${n} 则未读`, none: "还没有对话。到「找玩伴」跟最佳配对的主人打个招呼吧。",
-      via: (mine) => `以 ${mine} 的名义`, with: (n) => `${n} 的主人`,
+      with: (n) => `${n} 的主人`, pairedIn: (mine, city) => (city ? `曾与 ${mine} 在${city}最佳配对` : `曾与 ${mine} 最佳配对`),
       placeholder: "输入讯息…", send: "送出", sendFail: "没送出去，再试一次。", loadFail: "读取失败，请重新整理。",
       empty: "还没有讯息，先打个招呼吧。", today: "今天",
     },
@@ -1025,7 +1027,7 @@ const STR = {
     },
     chat: {
       inbox: "Messages", unread: (n) => `${n} unread`, none: "No conversations yet. Find a playmate and say hi to the owner.",
-      via: (mine) => `as ${mine}`, with: (n) => `${n}'s owner`,
+      with: (n) => `${n}'s owner`, pairedIn: (mine, city) => (city ? `Matched with ${mine} in ${city}` : `Matched with ${mine}`),
       placeholder: "Type a message…", send: "Send", sendFail: "Not sent. Please try again.", loadFail: "Couldn't load. Please refresh.",
       empty: "No messages yet. Say hi!", today: "Today",
     },
@@ -2852,8 +2854,8 @@ function Inbox({ onOpen, onBack }) {
         <button className="paper pp-conv" key={c.id} onClick={() => onOpen(c)}>
           <Photo src={c.other_pet_photo} species={c.other_species} breed={c.other_breed} />
           <div className="body">
-            <div className="top"><span className="who">{c.other_pet_name}</span><span className="when">{fmtTime(c.last_at, lang, T)}</span></div>
-            <div className="pp-meta" style={{ marginTop: 0 }}>{T.with(c.other_pet_name)} · {T.via(c.my_pet_name)}</div>
+            <div className="top"><span className="who">{T.with(c.other_pet_name)}</span><span className="when">{fmtTime(c.last_at, lang, T)}</span></div>
+            <div className="pp-meta" style={{ marginTop: 0 }}>{T.pairedIn(c.my_pet_name, c.city ? cityLabel(c.city, lang) : "")}</div>
             <div className="prev">{c.last_preview || T.empty}</div>
           </div>
           {c.unread > 0 && <span className="dot" aria-label={T.unread(c.unread)} />}
@@ -2920,8 +2922,8 @@ function Chat({ conv, me, onBack }) {
       <div className="paper pp-chat-head">
         <Photo src={conv.other_pet_photo} species={conv.other_species} breed={conv.other_breed} />
         <div style={{ minWidth: 0 }}>
-          <h2 className="pp-name">{conv.other_pet_name}</h2>
-          <div className="pp-meta">{T.with(conv.other_pet_name)} · {T.via(conv.my_pet_name)}</div>
+          <h2 className="pp-name">{T.with(conv.other_pet_name)}</h2>
+          <div className="pp-meta">{T.pairedIn(conv.my_pet_name, conv.city ? cityLabel(conv.city, lang) : "")}</div>
         </div>
       </div>
       <div className="pp-chat">
@@ -2963,7 +2965,7 @@ function Playmates({ pet, allPets, onBack, canChat, onChat }) {
     setOpening(true); setChatMsg("");
     try {
       const id = await startConversation(pet.id, o.id);
-      onChat({ id, my_pet_id: pet.id, my_pet_name: pet.name, other_pet_id: o.id, other_pet_name: o.name, other_pet_photo: o.photo, other_species: o.species, other_breed: o.breed });
+      onChat({ id, my_pet_id: pet.id, my_pet_name: pet.name, other_pet_id: o.id, other_pet_name: o.name, other_pet_photo: o.photo, other_species: o.species, other_breed: o.breed, city: pet.city });
     } catch { setChatMsg(M.openFail); }
     setOpening(false);
   }
