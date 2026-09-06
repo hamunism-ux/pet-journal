@@ -93,6 +93,8 @@ import { loadPets, upsertPet, deletePet, saveAdvice, loadFoodCheck, saveFoodChec
 
    v3.10：必填改为名字、物种、品种、性别、生日、体重、结扎、城市；所有栏位标题粗体；生日精度到月份（存 YYYY-MM-01）。
 
+   v4.8.1：移除「主人 Email」：表单不再有这一栏（必填九项变八项）、宠物详情不显示、配对页不再露出对方 Email（改由聊天联络）。
+      资料库栏位 owner_email 保留但不再读写；Edge Function match-playmates 与 find_playmates() 不再回传 Email（migrate-v12）。
    v4.8.0：纯文字聊天（第二步）。找玩伴页的最佳配对多一颗「跟主人打个招呼」：绑定 Email 的正式帐号才能开对话，
       开了就进聊天室（气泡式、每 3 秒拉一次新讯息、切回页面时立刻拉）。首页多一条「消息」列（有对话才出现，显示未读数）→ 收件匣。
       资料库：conversations、messages 两张表＋start_conversation / inbox / mark_read 三个函式（migrate-v11-chat.sql）。
@@ -415,15 +417,6 @@ img.pp-photo{display:block;}
 .pp-mate-contact{margin:0 16px 14px;padding:12px 14px;background:#fff;border-radius:8px;font-size:14px;word-break:break-all;
   border:1px dashed var(--ink-soft);}
 .pp-mate-contact .k{font-size:11px;color:var(--ink-soft);font-family:var(--font-round);margin-bottom:4px;}
-.pp-reveal{position:relative;min-height:22px;}
-.pp-reveal .val{transition:opacity .5s ease;}
-.pp-reveal[data-open="0"] .val{opacity:0;}
-.pp-reveal .cover{position:absolute;top:-6px;right:-8px;bottom:-6px;left:-8px;border-radius:8px;background:var(--tape-c);
-  background-image:repeating-linear-gradient(90deg,rgba(255,255,255,0) 0 6px,rgba(255,255,255,.35) 6px 9px);
-  display:flex;align-items:center;justify-content:center;cursor:pointer;border:none;width:auto;height:auto;padding:0;
-  font-family:var(--font-round);font-size:13px;color:var(--ink);font-weight:700;
-  transition:opacity .5s ease;box-shadow:0 1px 3px rgba(59,48,36,.2);}
-.pp-reveal[data-open="1"] .cover{opacity:0;pointer-events:none;}
 
 /* ---- 表单 ---- */
 .pp-form{padding:12px 16px 40px;}
@@ -608,7 +601,7 @@ const STR = {
     speciesName: { dog: "犬", cat: "猫" },
     rows: {
       species: "物种", gender: "性别", birthday: "出生年月", weight: "体重", neutered: "结扎",
-      allergies: "过敏原", city: "所在城市", ownerEmail: "主人 Email", note: "备注",
+      allergies: "过敏原", city: "所在城市", note: "备注",
     },
     gender: { male: "公", female: "母" },
     neuteredYes: "已结扎",
@@ -714,9 +707,6 @@ const STR = {
       none: (city) => `${city}目前还没有其他宠物登记。`,
       best: "最佳配对",
       why: "配对理由",
-      contact: "主人 Email",
-      reveal: "点一下显示",
-      noEmail: "主人没有留 Email",
       sayHi: "跟主人打个招呼", needBind: "先回首页绑定 Email，才能传讯息。", opening: "开启中…", openFail: "开不了对话，请稍后再试。",
       catNote: "猫是领域性动物，不建议直接见面；这里的配对比较适合用来和饲主交流养猫经验。",
       fail: "读取失败，请稍后再试。",
@@ -843,7 +833,6 @@ const STR = {
       allergies: "已知过敏原",
       allergiesHint: "点选所有已知的过敏原，没有就不用选。",
       city: "所在城市", cityHint: "之后找玩伴、揪团、附近诊所都会用到。",
-      ownerEmail: "主人 Email", ownerEmailHint: "配对成功时对方会看到，用来联络你。", errEmail: "Email 格式看起来不对，请确认。", errEmailRequired: "请填写主人 Email。",
       note: "备注", notePh: "怕打雷、不能吃太快",
       errName: "请填写名字。",
       errBirthday: "请填写出生年月。",
@@ -913,7 +902,7 @@ const STR = {
     speciesName: { dog: "Dog", cat: "Cat" },
     rows: {
       species: "Species", gender: "Sex", birthday: "Birth month", weight: "Weight", neutered: "Neutered",
-      allergies: "Allergies", city: "City", ownerEmail: "Owner email", note: "Notes",
+      allergies: "Allergies", city: "City", note: "Notes",
     },
     gender: { male: "Male", female: "Female" },
     neuteredYes: "Yes",
@@ -1019,9 +1008,6 @@ const STR = {
       none: (city) => `No other pets are registered in ${city} yet.`,
       best: "Best match",
       why: "Why this match",
-      contact: "Owner email",
-      reveal: "Tap to reveal",
-      noEmail: "The owner didn't leave an email",
       sayHi: "Say hi to the owner", needBind: "Link an email on the home page first to send messages.", opening: "Opening…", openFail: "Couldn't open the chat. Please try again later.",
       catNote: "Cats are territorial and direct meetings aren't recommended; use this match to swap cat-care tips with the owner instead.",
       fail: "Couldn't load. Please try again later.",
@@ -1148,7 +1134,6 @@ const STR = {
       allergies: "Known allergies",
       allergiesHint: "Tap every known allergen. Leave empty if none.",
       city: "City", cityHint: "Used later for playmates, meet-ups and nearby clinics.",
-      ownerEmail: "Owner email", ownerEmailHint: "Shown to your match so they can contact you.", errEmail: "That email doesn't look right. Please check it.", errEmailRequired: "Please enter the owner's email.",
       note: "Notes", notePh: "Scared of thunder, eats too fast",
       errName: "Please enter a name.",
       errBirthday: "Please enter the birth month.",
@@ -1540,7 +1525,7 @@ function applyMatch(cands, ai) {
   const sorted = [...cands].sort((a, b) => (scoreOf.get(b.id) ?? 0) - (scoreOf.get(a.id) ?? 0));
   const bestId = cands.some((c) => c.id === ai.best_id) ? ai.best_id : sorted[0].id;
   return sorted
-    .map((c) => ({ ...c, score: scoreOf.get(c.id) ?? 0, isMatch: c.id === bestId, ownerEmail: c.id === bestId ? c.ownerEmail || "" : "",
+    .map((c) => ({ ...c, score: scoreOf.get(c.id) ?? 0, isMatch: c.id === bestId,
       pro: noteOf.get(c.id)?.pro || null, con: noteOf.get(c.id)?.con || null,
       reasons: c.id === bestId ? { zh: (ai.reasons?.zh || []).slice(0, 3), en: (ai.reasons?.en || []).slice(0, 3) } : null, aiScored: true }))
     .sort((a, b) => (b.isMatch ? 1 : 0) - (a.isMatch ? 1 : 0) || b.score - a.score);
@@ -1552,7 +1537,7 @@ async function loadPlaymates(pet) {
   const mapRow = (r, aiScored) => ({
     id: r.id, name: r.name, species: r.species, breed: r.breed || "", gender: r.gender || "", birthday: r.birthday || "",
     weightKg: r.weight_kg == null ? "" : Number(r.weight_kg), neutered: !!r.neutered, city: r.city || "", photo: r.photo || "",
-    score: r.score, isMatch: !!r.is_match, ownerEmail: r.owner_email || "", reasons: r.reasons || null, aiScored,
+    score: r.score, isMatch: !!r.is_match, reasons: r.reasons || null, aiScored,
     pro: r.pro || null, con: r.con || null,
   });
   try {
@@ -2403,7 +2388,6 @@ function Detail({ pet, onBack, onEdit, onCheck, onMates, onDelete, onAdvice }) {
           <Row k={L.rows.neutered} v={pet.neutered ? L.neuteredYes : L.neuteredNo} />
           <Row k={L.rows.allergies} v={pet.allergies?.length ? allergenList(pet.allergies, lang, L) : L.noAllergy} />
           <Row k={L.rows.city} v={pet.city ? cityLabel(pet.city, lang) : "—"} />
-          <Row k={L.rows.ownerEmail} v={pet.ownerEmail || "—"} />
           {pet.note && <Row k={L.rows.note} v={pet.note} />}
         </dl>
       </div>
@@ -2964,16 +2948,6 @@ function Chat({ conv, me, onBack }) {
   );
 }
 
-function RevealEmail({ email, L }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="pp-reveal" data-open={open ? "1" : "0"}>
-      <div className="val"><a href={`mailto:${email}`} style={{ color: "var(--ink)" }} tabIndex={open ? 0 : -1}>{email}</a></div>
-      <button type="button" className="cover" onClick={() => setOpen(true)} aria-label={L.mates.reveal}>{L.mates.reveal}</button>
-    </div>
-  );
-}
-
 /* ---------------- 寻找附近的玩伴 ---------------- */
 
 function Playmates({ pet, allPets, onBack, canChat, onChat }) {
@@ -3070,10 +3044,8 @@ function Playmates({ pet, allPets, onBack, canChat, onChat }) {
                   <div className="pp-why-h">{M.why}</div>
                   <ul className="pp-why">{reasons.map((r, i) => <li key={i}>{r}</li>)}</ul>
                 </div>
-                <div className="pp-mate-contact">
-                  <div className="k">{M.contact}</div>
-                  {o.ownerEmail ? <RevealEmail email={o.ownerEmail} L={L} /> : <span style={{ color: "var(--ink-soft)" }}>{M.noEmail}</span>}
-                  <button className="pp-btn" style={{ marginTop: 12 }} onClick={() => sayHi(o)} disabled={opening}>{opening ? M.opening : M.sayHi}</button>
+                <div style={{ margin: "0 16px 14px" }}>
+                  <button className="pp-btn" onClick={() => sayHi(o)} disabled={opening}>{opening ? M.opening : M.sayHi}</button>
                   {chatMsg && <div className="pp-msg">{chatMsg}</div>}
                 </div>
               </>
@@ -3088,7 +3060,7 @@ function Playmates({ pet, allPets, onBack, canChat, onChat }) {
 
 /* ---------------- 表单 ---------------- */
 
-const EMPTY = { name: "", species: "dog", breed: "", gender: "", birthday: "", weightKg: "", neutered: null, allergies: [], city: "", ownerEmail: "", note: "", photo: "" };
+const EMPTY = { name: "", species: "dog", breed: "", gender: "", birthday: "", weightKg: "", neutered: null, allergies: [], city: "", note: "", photo: "" };
 
 function PetForm({ pet, onSave, onCancel }) {
   const { lang, L } = useL();
@@ -3155,11 +3127,8 @@ function PetForm({ pet, onSave, onCancel }) {
     if (f.weightKg === "" || f.weightKg == null) return setErr(F.errWeight);
     if (f.neutered !== true && f.neutered !== false) return setErr(F.errNeutered);
     if (!f.city) return setErr(F.errCity);
-    const email = (f.ownerEmail || "").trim();
-    if (!email) return setErr(F.errEmailRequired);
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return setErr(F.errEmail);
     setErr("");
-    onSave({ ...f, id: pet?.id || uid(), name: f.name.trim(), breed: f.breed.trim(), weightKg: Number(f.weightKg), neutered: f.neutered === true, ownerEmail: email,
+    onSave({ ...f, id: pet?.id || uid(), name: f.name.trim(), breed: f.breed.trim(), weightKg: Number(f.weightKg), neutered: f.neutered === true,
       allergies: f.allergies, createdAt: pet?.createdAt || new Date().toISOString() });
   }
 
@@ -3276,12 +3245,6 @@ function PetForm({ pet, onSave, onCancel }) {
               {Object.keys(CITIES).map((k) => <option key={k} value={k}>{cityLabel(k, lang)}</option>)}
             </select>
             <div className="pp-hint">{F.cityHint}</div>
-          </div>
-
-          <div className="pp-field">
-            <label className="pp-label" htmlFor="oe">{F.ownerEmail}<i>*</i></label>
-            <input id="oe" className="pp-input" type="email" inputMode="email" autoComplete="email" value={f.ownerEmail || ""} onChange={(e) => set("ownerEmail", e.target.value)} placeholder="you@example.com" />
-            <div className="pp-hint">{F.ownerEmailHint}</div>
           </div>
 
           <div className="pp-field">
