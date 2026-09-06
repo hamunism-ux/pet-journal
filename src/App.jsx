@@ -93,6 +93,7 @@ import { loadPets, upsertPet, deletePet, saveAdvice, loadFoodCheck, saveFoodChec
 
    v3.10：必填改为名字、物种、品种、性别、生日、体重、结扎、城市；所有栏位标题粗体；生日精度到月份（存 YYYY-MM-01）。
 
+   v4.7.2：验证码位数由 Supabase 设定决定（6～10 位），输入框改成最多 12 位、提示改成「信里的那串数字」。
    v4.7.1：修「收到验证码回来却没地方输入」：① 宠物只在「换了人」时重新载入，绑定 Email 不再把首页换成「载入中」而冲掉输入框；
       ② 寄出验证码后把进度记在手机上（一小时），切去看信再回来（页面被重载）会自动回到输入验证码；③ 加「没收到？重寄」。
    v4.7.0：帐号（第一步）。访客（匿名帐号）可以「绑定 Email」升级成正式帐号：输入 Email → 收 6 位数验证码 → 确认，
@@ -553,8 +554,8 @@ const STR = {
       bindIntro: "绑定后，换手机用同一个 Email 登入就能找回资料。不用密码。",
       loginIntro: "输入你之前绑定过的 Email，我们寄验证码给你。",
       loginWarn: (n) => `注意：登入后会切换到那个账号，这台手机目前的 ${n} 只宠物不会跟过去。`,
-      codeSend: "寄验证码", codeSending: "寄送中…", codeSent: (e) => `验证码已寄到 ${e}，请到信箱查看（找不到请看垃圾邮件）。`,
-      code: "验证码", codePh: "6 位数", verify: "确认", verifying: "确认中…", cancel: "取消",
+      codeSend: "寄验证码", codeSending: "寄送中…", codeSent: (e) => `验证码已寄到 ${e}，请到信箱查看（找不到请看垃圾邮件），把信里那串数字输入下面。`,
+      code: "验证码", codePh: "信里的那串数字", verify: "确认", verifying: "确认中…", cancel: "取消",
       bindOk: "绑定完成！", loginOk: "登入完成！",
       emailExists: "这个 Email 已经有账号了。", useLogin: "改用它登入",
       codeErr: "验证码不对或已过期，请再试一次。", sendErr: "寄送失败：", resend: "没收到？重寄",
@@ -852,7 +853,7 @@ const STR = {
       loginIntro: "Enter the email you linked before and we'll send you a code.",
       loginWarn: (n) => `Note: signing in switches to that account. The ${n} pet${n === 1 ? "" : "s"} on this phone won't come along.`,
       codeSend: "Send code", codeSending: "Sending…", codeSent: (e) => `Code sent to ${e}. Check your inbox (and spam).`,
-      code: "Code", codePh: "6 digits", verify: "Confirm", verifying: "Confirming…", cancel: "Cancel",
+      code: "Code", codePh: "the number in the email", verify: "Confirm", verifying: "Confirming…", cancel: "Cancel",
       bindOk: "Linked!", loginOk: "Signed in!",
       emailExists: "This email already has an account.", useLogin: "Sign in with it instead",
       codeErr: "Wrong or expired code. Please try again.", sendErr: "Couldn't send: ", resend: "Didn't get it? Resend",
@@ -2137,7 +2138,7 @@ function AccountCard({ session, petCount, onLogout }) {
           )}
           {step === "code" && (
             <div className="pp-inline">
-              <input className="pp-input" type="text" inputMode="numeric" autoComplete="one-time-code" placeholder={A.codePh} maxLength={8} value={code}
+              <input className="pp-input" type="text" inputMode="numeric" autoComplete="one-time-code" placeholder={A.codePh} maxLength={12} value={code}
                 onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))} onKeyDown={(e) => { if (e.key === "Enter") verify(); }} />
               <button className="pp-btn" onClick={verify} disabled={busy || code.trim().length < 6}>{busy ? A.verifying : A.verify}</button>
             </div>
