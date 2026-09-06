@@ -93,6 +93,8 @@ import { loadPets, upsertPet, deletePet, saveAdvice, loadFoodCheck, saveFoodChec
 
    v3.10：必填改为名字、物种、品种、性别、生日、体重、结扎、城市；所有栏位标题粗体；生日精度到月份（存 YYYY-MM-01）。
 
+   v4.6.1：评分卡的扣分原因改放在下方整体描述里（「扣分原因：…」一句话），能量条下面不再有小字；
+      打开时圆环与能量条从 0 长到分数、总分数字往上数。零食／保健品的营养匹配改为固定 14（有对应配方才 20），不再因为「不是体重管理配方」被扣到 0。
    v4.6：商品检查改为「AI 报事实、规则算分」：AI 回一张事实勾选表（第一成分、副产品、填充、添加剂、完整均衡、
       体重管理、关节、有害成分、过敏原命中…），App 依固定规则算出 安全30＋阶段与体型20＋成分品质30＋营养匹配20＝100 分与 A–D 等级，
       结论也由分数决定（A/B 合适、C 还可以、D 不合适）。画面在结论下方多一张评分卡：总分圆章＋四条能量条＋扣分原因。改权重只改 scoreFood()，
@@ -457,25 +459,27 @@ img.pp-photo{display:block;}
 .pp-ai .pp-verdict{font-size:18px;padding:11px 22px;margin-top:10px;}
 .pp-ai .pp-res{font-size:14.5px;line-height:1.85;padding-top:12px;}
 
-/* ---- v4.6 四面向评分卡 ---- */
-.pp-sc{display:flex;gap:14px;align-items:flex-start;padding:10px 16px 0;}
-.pp-sc-total{flex:none;width:66px;height:66px;border-radius:50%;border:3px solid var(--ok);background:#FFFDF8;
-  display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1;box-shadow:0 2px 4px rgba(59,48,36,.12);}
+/* ---- v4.6 四面向评分卡（v4.6.1：打开时能量条与圆环从 0 长到分数） ---- */
+.pp-sc{display:flex;gap:14px;align-items:center;padding:10px 16px 0;}
+.pp-sc-total{flex:none;position:relative;width:66px;height:66px;}
+.pp-sc-total svg{position:absolute;inset:0;transform:rotate(-90deg);}
+.pp-sc-total .track{fill:none;stroke:var(--rule);stroke-width:5;}
+.pp-sc-total .ring{fill:none;stroke:var(--ok);stroke-width:5;stroke-linecap:round;transition:stroke-dashoffset 1s cubic-bezier(.4,0,.2,1);}
+.pp-sc-total .txt{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1;}
 .pp-sc-total b{font-family:var(--font-round);font-size:24px;font-weight:700;color:var(--ok);}
 .pp-sc-total i{font-style:normal;font-family:var(--font-type);font-size:10px;letter-spacing:.14em;color:var(--ink-soft);margin-top:3px;}
-.pp-sc-total[data-g="C"]{border-color:#C9A227;}
+.pp-sc-total[data-g="C"] .ring{stroke:#C9A227;}
 .pp-sc-total[data-g="C"] b{color:#B08A2E;}
-.pp-sc-total[data-g="D"]{border-color:var(--berry);}
+.pp-sc-total[data-g="D"] .ring{stroke:var(--berry);}
 .pp-sc-total[data-g="D"] b{color:var(--berry);}
-.pp-sc-rows{flex:1;min-width:0;display:grid;grid-template-columns:auto 1fr auto;column-gap:8px;row-gap:6px;align-items:center;margin-top:2px;}
+.pp-sc-rows{flex:1;min-width:0;display:grid;grid-template-columns:auto 1fr auto;column-gap:8px;row-gap:9px;align-items:center;}
 .pp-sc-rows .lbl{font-size:12px;color:var(--ink);white-space:nowrap;}
 .pp-sc-rows .bar{height:7px;background:var(--rule);border-radius:999px;overflow:hidden;}
-.pp-sc-rows .fill{height:100%;border-radius:999px;background:var(--ok);transition:width .6s ease;}
+.pp-sc-rows .fill{height:100%;border-radius:999px;background:var(--ok);transition:width .9s cubic-bezier(.4,0,.2,1);}
 .pp-sc-rows .fill[data-lv="mid"]{background:#C9A227;}
 .pp-sc-rows .fill[data-lv="low"]{background:var(--berry);}
 .pp-sc-rows .num{font-family:var(--font-type);font-size:10.5px;letter-spacing:.02em;color:var(--ink-soft);white-space:nowrap;}
-.pp-sc-note{grid-column:1 / -1;font-size:11px;color:var(--ink-soft);line-height:1.5;margin:-3px 0 1px;}
-.pp-sc-note::before{content:"· ";}
+@media (prefers-reduced-motion:reduce){.pp-sc-rows .fill,.pp-sc-total .ring{transition:none;}}
 
 /* ---- 检查商品 ---- */
 .pp-tier{margin:0 16px 18px;padding:16px 16px 14px;}
@@ -692,7 +696,7 @@ const STR = {
       aiNote: "AI 判断可能有误，有疑虑请问兽医。",
       score: {
         dims: { safety: "安全", stage: "阶段与体型", quality: "成分品质", nutrition: "营养匹配" },
-        sep: "、",
+        sep: "、", notesLabel: "扣分原因：", join: "；", end: "。",
         items: { first: "第一成分", byproducts: "副产品", fillers: "填充谷物", additives: "人工添加剂" },
         notes: {
           allergen: (x) => `含牠的过敏原：${x}`,
@@ -979,7 +983,7 @@ const STR = {
       aiNote: "AI can be wrong; ask your vet if in doubt.",
       score: {
         dims: { safety: "Safety", stage: "Stage & size", quality: "Ingredients", nutrition: "Nutrition fit" },
-        sep: ", ",
+        sep: ", ", notesLabel: "Points off: ", join: "; ", end: ".",
         items: { first: "first ingredient", byproducts: "by-products", fillers: "fillers", additives: "additives" },
         notes: {
           allergen: (x) => `Contains a known allergen: ${x}`,
@@ -1606,19 +1610,22 @@ function scoreFood(pet, r) {
     else notes.quality.push([k]);
   }
   if (unknown.length) notes.quality.push(["unknown", unknown]);
-  /* 营养匹配：只算适用于这只宠物的项目，再按比例换成 20 分 */
-  let earned = 0, possible = 0;
+  /* 营养匹配：只算适用于这只宠物的项目，再按比例换成 20 分；零食／保健品另计 */
+  let earned = 0, possible = 0, nutrition;
   const treat = r.type === "treat" || r.type === "supplement";
-  if (treat) notes.nutrition.push(["treat"]);
-  else {
+  if (treat) {
+    // 零食／保健品不是主食，不用「完整均衡」「体重管理」去要求它：一律给 14；刚好有对应牠需求的配方才给满分
+    notes.nutrition.push(["treat"]);
+    nutrition = (pet.neutered && f.weightControl === true) || (petStage === "senior" && f.joint === true) ? 20 : 14;
+  } else {
     possible += 8;
     if (f.complete === true) earned += 8;
     else if (f.complete === null) { earned += 4; notes.nutrition.push(["completeUnknown"]); }
     else { earned += 2; notes.nutrition.push(["notComplete"]); }
+    if (pet.neutered) { possible += 6; if (f.weightControl === true) earned += 6; else if (f.weightControl === null) earned += 3; else notes.nutrition.push(["neutered"]); }
+    if (petStage === "senior") { possible += 6; if (f.joint === true) earned += 6; else if (f.joint === null) earned += 3; else notes.nutrition.push(["senior"]); }
+    nutrition = Math.round((20 * earned) / possible);
   }
-  if (pet.neutered) { possible += 6; if (f.weightControl === true) earned += 6; else if (f.weightControl === null) earned += 3; else notes.nutrition.push(["neutered"]); }
-  if (petStage === "senior") { possible += 6; if (f.joint === true) earned += 6; else if (f.joint === null) earned += 3; else notes.nutrition.push(["senior"]); }
-  const nutrition = possible ? Math.round((20 * earned) / possible) : 20;
   /* 总分、门槛、等级 */
   let overall = safety + stage + quality + nutrition;
   if (gate === "young") overall = Math.min(overall, 50);
@@ -2273,22 +2280,49 @@ function Row({ k, v }) { return <div className="pp-row"><dt>{k}</dt><dd>{v}</dd>
 
 /* ---------------- 检查商品 ---------------- */
 
-/* v4.6 评分卡：左边总分圆章（A/B 绿、C 黄、D 莓红），右边四个面向的能量条；有扣分的面向下方一行原因 */
-function ScoreCard({ sc, C }) {
+/* 评分卡的扣分原因 → 一句话（v4.6.1 起放在下方的整体描述里，不再挤在能量条下面） */
+function scoreNoteText(C, n) {
   const N = C.score.notes;
-  const text = (n) => (n[0] === "unknown" ? N.unknown(n[1].map((k) => C.score.items[k]).join(C.score.sep)) : typeof N[n[0]] === "function" ? N[n[0]](n[1]) : N[n[0]]);
+  return n[0] === "unknown" ? N.unknown(n[1].map((k) => C.score.items[k]).join(C.score.sep)) : typeof N[n[0]] === "function" ? N[n[0]](n[1]) : N[n[0]];
+}
+
+/* v4.6 评分卡：左边总分圆环（A/B 绿、C 黄、D 莓红），右边四个面向的能量条。
+   v4.6.1：打开时圆环、能量条都从 0 长到分数（依序稍微错开），总分数字跟着往上数；系统设「减少动态」时直接显示。 */
+function ScoreCard({ sc, C }) {
+  const [on, setOn] = useState(false);
+  const [num, setNum] = useState(0);
+  useEffect(() => {
+    const reduce = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduce) { setOn(true); setNum(sc.overall); return; }
+    const t = setTimeout(() => setOn(true), 40); // 先画出 0，下一拍再变成目标值，CSS transition 才会动
+    const start = performance.now(), dur = 900;
+    let raf;
+    const tick = (now) => {
+      const p = Math.min(1, (now - start) / dur);
+      setNum(Math.round(sc.overall * (1 - Math.pow(1 - p, 3)))); // 先快后慢
+      if (p < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => { clearTimeout(t); cancelAnimationFrame(raf); };
+  }, [sc.overall]);
+  const R = 29, CIRC = 2 * Math.PI * R;
   return (
     <div className="pp-sc">
-      <div className="pp-sc-total" data-g={sc.grade}><b>{sc.overall}</b><i>{sc.grade}</i></div>
+      <div className="pp-sc-total" data-g={sc.grade}>
+        <svg viewBox="0 0 66 66" width="66" height="66" aria-hidden="true">
+          <circle className="track" cx="33" cy="33" r={R} />
+          <circle className="ring" cx="33" cy="33" r={R} strokeDasharray={CIRC} strokeDashoffset={on ? CIRC * (1 - sc.overall / 100) : CIRC} />
+        </svg>
+        <div className="txt"><b>{num}</b><i>{sc.grade}</i></div>
+      </div>
       <div className="pp-sc-rows">
-        {sc.dims.map((d) => {
+        {sc.dims.map((d, i) => {
           const ratio = d.score / d.max;
           return (
             <Fragment key={d.key}>
               <span className="lbl">{C.score.dims[d.key]}</span>
-              <div className="bar"><div className="fill" data-lv={ratio >= 0.8 ? "high" : ratio >= 0.5 ? "mid" : "low"} style={{ width: `${Math.max(3, Math.round(ratio * 100))}%` }} /></div>
+              <div className="bar"><div className="fill" data-lv={ratio >= 0.8 ? "high" : ratio >= 0.5 ? "mid" : "low"} style={{ width: on ? `${Math.max(3, Math.round(ratio * 100))}%` : "0%", transitionDelay: `${i * 90}ms` }} /></div>
               <span className="num">{d.score}/{d.max}</span>
-              {d.notes.map((n, i) => <div key={i} className="pp-sc-note">{text(n)}</div>)}
             </Fragment>
           );
         })}
@@ -2475,6 +2509,9 @@ function CheckProduct({ pet, onBack }) {
           {sc && <ScoreCard sc={sc} C={C} />}
           <div className="pp-res">
             <div>{ai.reasons[lang] || ai.reasons.zh || ai.reasons.en}</div>
+            {sc && sc.dims.some((d) => d.notes.length) && (
+              <div style={{ marginTop: 6 }}><span style={{ color: "var(--ink-soft)" }}>{C.score.notesLabel}</span>{sc.dims.flatMap((d) => d.notes).map((n) => scoreNoteText(C, n)).join(C.score.join)}{C.score.end}</div>
+            )}
             <div className="pp-src" style={{ marginTop: 8 }}>{C.aiConf(C.conf[ai.confidence])}</div>
             {ai.sources.length > 0 && (
               <div className="pp-src" style={{ marginTop: 4 }}>
