@@ -115,8 +115,8 @@ export async function saveFoodCheck(petId, inputHash, petKey, result) {
 }
 /* ---- v4.8.0 纯文字聊天（conversations / messages 表与函式，见 supabase/migrate-v11-chat.sql） ----
    开对话、收件匣、标已读都是资料库函式（只有当事人拿得到自己的）；讯息本身直接读写 messages 表，RLS 管权限。 */
-export async function startConversation(myPetId, theirPetId) {
-  const { data, error } = await supabase.rpc("start_conversation", { p_my_pet: myPetId, p_their_pet: theirPetId });
+export async function startConversation(myPetId, theirPetId, reasons = null) {
+  const { data, error } = await supabase.rpc("start_conversation", { p_my_pet: myPetId, p_their_pet: theirPetId, p_reasons: reasons }); // v4.8.6：一并存下当时的配对理由
   if (error) throw error;
   return data; // conversation id
 }
