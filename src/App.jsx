@@ -93,6 +93,8 @@ import { loadPets, upsertPet, deletePet, saveAdvice, loadFoodCheck, saveFoodChec
 
    v3.10：必填改为名字、物种、品种、性别、生日、体重、结扎、城市；所有栏位标题粗体；生日精度到月份（存 YYYY-MM-01）。
 
+   v4.7.1：修「收到验证码回来却没地方输入」：① 宠物只在「换了人」时重新载入，绑定 Email 不再把首页换成「载入中」而冲掉输入框；
+      ② 寄出验证码后把进度记在手机上（一小时），切去看信再回来（页面被重载）会自动回到输入验证码；③ 加「没收到？重寄」。
    v4.7.0：帐号（第一步）。访客（匿名帐号）可以「绑定 Email」升级成正式帐号：输入 Email → 收 6 位数验证码 → 确认，
       UUID 不变、宠物资料原地保留（用 supabase.auth.updateUser 连结，不是开新帐号）。另有「已有账号？登入」给换手机的人。
       资料库零改动。首页多一条淡淡的帐号状态列（访客提醒／已绑定 xxx＋登出）。Supabase 后台要把三个 Email 范本加上 {{ .Token }}。
@@ -555,7 +557,7 @@ const STR = {
       code: "验证码", codePh: "6 位数", verify: "确认", verifying: "确认中…", cancel: "取消",
       bindOk: "绑定完成！", loginOk: "登入完成！",
       emailExists: "这个 Email 已经有账号了。", useLogin: "改用它登入",
-      codeErr: "验证码不对或已过期，请再试一次。", sendErr: "寄送失败：",
+      codeErr: "验证码不对或已过期，请再试一次。", sendErr: "寄送失败：", resend: "没收到？重寄",
     },
     issued: (n) => `${n} 位家庭成员`,
     notIssued: "还没有家庭成员",
@@ -853,7 +855,7 @@ const STR = {
       code: "Code", codePh: "6 digits", verify: "Confirm", verifying: "Confirming…", cancel: "Cancel",
       bindOk: "Linked!", loginOk: "Signed in!",
       emailExists: "This email already has an account.", useLogin: "Sign in with it instead",
-      codeErr: "Wrong or expired code. Please try again.", sendErr: "Couldn't send: ",
+      codeErr: "Wrong or expired code. Please try again.", sendErr: "Couldn't send: ", resend: "Didn't get it? Resend",
     },
     issued: (n) => `${n} family member${n === 1 ? "" : "s"}`,
     notIssued: "No family members yet",
@@ -1997,7 +1999,7 @@ export default function PetJournal() {
       .catch(() => { if (alive) setLoadErr(true); })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
-  }, [session]);
+  }, [session?.user?.id]); // v4.7.1：只看「是谁」；绑定 Email、token 更新不算换人，画面不重载
 
   function setLang(l) { setLangState(l); saveLang(l); }
 
@@ -2059,15 +2061,25 @@ function AccountCard({ session, petCount, onLogout }) {
   const A = L.auth;
   const user = session.user;
   const isGuest = !!user.is_anonymous || !user.email;
-  const [mode, setMode] = useState(""); // "" | bind | login
-  const [email, setEmail] = useState("");
+  /* v4.7.1：寄出验证码后把「进行到哪」记在这台手机上。使用者切去看信再切回来时，手机浏览器常会把页面重载，
+     没记的话输入框就不见了。一小时内有效（跟验证码一样）。 */
+  const PENDING_KEY = "pj_otp_pending";
+  const [pending] = useState(() => {
+    try { const v = JSON.parse(localStorage.getItem(PENDING_KEY) || "null"); if (v && v.email && Date.now() - v.ts < 3600e3) return v; } catch { /* 忽略 */ }
+    return null;
+  });
+  const [mode, setMode] = useState(pending?.mode || ""); // "" | bind | login
+  const [email, setEmail] = useState(pending?.email || "");
   const [code, setCode] = useState("");
-  const [step, setStep] = useState("email"); // email | code | done
+  const [step, setStep] = useState(pending ? "code" : "email"); // email | code | done
   const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState(null); // { kind: "ok" | "err" | "exists", text }
+  const [msg, setMsg] = useState(pending ? { kind: "ok", text: A.codeSent(pending.email) } : null); // { kind: "ok" | "err" | "exists", text }
+  const remember = (v) => { try { v ? localStorage.setItem(PENDING_KEY, JSON.stringify(v)) : localStorage.removeItem(PENDING_KEY); } catch { /* 忽略 */ } };
+  useEffect(() => { if (!isGuest) remember(null); }, [isGuest]); // 已经绑好了就不用再记
 
-  function open(m) { setMode(m); setStep("email"); setCode(""); setMsg(null); }
-  function close() { setMode(""); setMsg(null); }
+  function open(m) { setMode(m); setStep("email"); setCode(""); setMsg(null); remember(null); }
+  function close() { setMode(""); setMsg(null); remember(null); }
+  function resend() { setStep("email"); setCode(""); setMsg(null); remember(null); }
 
   async function sendCode() {
     const e = email.trim().toLowerCase();
@@ -2080,7 +2092,7 @@ function AccountCard({ session, petCount, onLogout }) {
       if (error) {
         const already = /already|exists|registered/i.test(error.message || "") || error.code === "email_exists";
         setMsg(already && mode === "bind" ? { kind: "exists", text: A.emailExists } : { kind: "err", text: A.sendErr + (error.message || String(error)) });
-      } else { setStep("code"); setMsg({ kind: "ok", text: A.codeSent(e) }); }
+      } else { setStep("code"); setMsg({ kind: "ok", text: A.codeSent(e) }); remember({ mode, email: e, ts: Date.now() }); }
     } catch (err) { setMsg({ kind: "err", text: A.sendErr + (err?.message || String(err)) }); }
     setBusy(false);
   }
@@ -2092,7 +2104,7 @@ function AccountCard({ session, petCount, onLogout }) {
     try {
       const { error } = await supabase.auth.verifyOtp({ email: e, token: c, type: mode === "bind" ? "email_change" : "email" });
       if (error) setMsg({ kind: "err", text: A.codeErr });
-      else { setStep("done"); setMsg({ kind: "ok", text: mode === "bind" ? A.bindOk : A.loginOk }); } // 之后 onAuthStateChange 会更新 session，这张卡自己会变成「已绑定」
+      else { setStep("done"); setMsg({ kind: "ok", text: mode === "bind" ? A.bindOk : A.loginOk }); remember(null); } // 之后 onAuthStateChange 会更新 session，这张卡自己会变成「已绑定」
     } catch { setMsg({ kind: "err", text: A.codeErr }); }
     setBusy(false);
   }
@@ -2136,6 +2148,7 @@ function AccountCard({ session, petCount, onLogout }) {
               {msg.kind === "exists" && <> <button className="pp-link" style={{ marginLeft: 6 }} onClick={() => { const e = email; open("login"); setEmail(e); }}>{A.useLogin}</button></>}
             </div>
           )}
+          {step === "code" && <button className="pp-link" style={{ marginTop: 8, marginRight: 14 }} onClick={resend}>{A.resend}</button>}
           {step !== "done" && <button className="pp-link" style={{ marginTop: 8 }} onClick={close}>{A.cancel}</button>}
         </div>
       )}
