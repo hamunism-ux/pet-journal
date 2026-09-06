@@ -5,10 +5,47 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#D8C6A2" />
     <title>宠物手帐 · Pet Journal</title>
-    <style>html,body{margin:0;padding:0;background:#D8C6A2;}</style>
+    <style>
+      html,body{margin:0;padding:0;background:#D8C6A2;}
+      #boot-fail{display:none;max-width:520px;margin:0 auto;padding:40px 22px;color:#3B3024;
+        font:15px/1.8 -apple-system,BlinkMacSystemFont,"PingFang SC","Noto Sans SC","Microsoft YaHei",sans-serif;}
+      #boot-fail p{margin:0 0 14px;}
+      #boot-fail .en{font-size:13px;color:#5A4B38;}
+      #boot-fail .info{font:11px/1.6 "Courier New",monospace;color:#5A4B38;word-break:break-all;background:#FBF6EA;padding:10px 12px;border-radius:8px;}
+    </style>
   </head>
   <body>
     <div id="root"></div>
+
+    <!-- v4.6.3 备援：主程式载不进来（浏览器太旧、被内建浏览器挡住、连不到服务器）时才会显示这一块；
+         正常情况下使用者永远看不到。文字用白话，底部附浏览器资讯让使用者截图回报。 -->
+    <div id="boot-fail">
+      <p><b>页面没有正常载入。</b><br />可能是浏览器版本太旧，或网路连不到服务器。</p>
+      <p>请试试：① 用 Chrome 或 Safari 直接打开这个网址（不要在微信、LINE 里面开）；② 更新浏览器；③ 换一个网路再试。</p>
+      <p class="en">The page didn't load. Try opening this link in Chrome or Safari (not inside WeChat / LINE), updating your browser, or switching networks.</p>
+      <p class="info" id="boot-info"></p>
+    </div>
+    <script>
+      /* 这段故意用最老式的写法，任何浏览器都看得懂 */
+      (function () {
+        var shown = false;
+        function mounted() { var r = document.getElementById("root"); return r && r.firstChild; }
+        function show(msg) {
+          if (shown || mounted()) return;
+          shown = true;
+          var box = document.getElementById("boot-fail"), info = document.getElementById("boot-info");
+          if (box) box.style.display = "block";
+          if (info) info.textContent = (msg ? msg + " · " : "") + (navigator.userAgent || "");
+        }
+        // 程式档载入失败或一开始就出错（capture=true 才收得到 <script> 载入失败）
+        window.addEventListener("error", function (e) {
+          var t = e && e.target, src = t && (t.src || t.href);
+          show(src ? "load failed: " + src : (e && e.message) || "script error");
+        }, true);
+        // 10 秒后画面还是空的，也当作没载入
+        setTimeout(function () { show(""); }, 10000);
+      })();
+    </script>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
