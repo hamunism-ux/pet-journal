@@ -93,6 +93,7 @@ import { loadPets, upsertPet, deletePet, saveAdvice, loadFoodCheck, saveFoodChec
 
    v3.10：必填改为名字、物种、品种、性别、生日、体重、结扎、城市；所有栏位标题粗体；生日精度到月份（存 YYYY-MM-01）。
 
+   v4.9.0：App 名称改为 Furrytails（不设中文名）；网页标签标题同步。
    v4.8.6：聊天室上方多显示对方宠物目前的基本资料（品种、年龄、体重、性别、结扎）与当时的配对理由（一行）。
       理由在开对话时存进对话（migrate-v16），之后重新配对理由变了也不影响；基本资料是即时的。
    v4.8.5：（资料库端）测试宠物自动回覆：跟 seed-pets 的宠物聊天时，资料库以该主人身分立刻回一句「我是测试资料」，每个对话只回一次（migrate-v14）。App 程式没动。
@@ -564,7 +565,7 @@ img.pp-photo{display:block;}
 
 const STR = {
   zh: {
-    title: "宠物手帐",
+    title: "Furrytails",
     sub: "PET PASSPORT",
     loading: "翻开手帐中…",
     auth: {
@@ -867,8 +868,8 @@ const STR = {
   },
 
   en: {
-    title: "Pet Journal",
-    sub: "宠物手帐",
+    title: "Furrytails",
+    sub: "PET PASSPORT",
     loading: "Opening the journal…",
     auth: {
       title: "Sign in",
